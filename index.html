@@ -117,7 +117,10 @@
             <strong>固定成本管理</strong>
             <span class="toolbar-help">维护已确定的产品单个成本，套餐计算自动引用。</span>
           </div>
-          <button class="btn primary" id="addCostItemBtn">＋ 添加产品</button>
+          <div class="toolbar-left">
+            <button class="btn" id="addCostItemBtn">＋ 添加产品</button>
+            <button class="btn primary" id="addComboItemBtn">＋ 添加组合</button>
+          </div>
         </div>
         <section class="block cost-manager">
           <div class="table-scroll">
@@ -126,6 +129,8 @@
                 <tr>
                   <th class="rank">排序</th>
                   <th class="cost-name">产品品类</th>
+                  <th class="cost-components">成份</th>
+                  <th class="cost-component-qty">成份数量</th>
                   <th class="cost-spec">规格 / 备注</th>
                   <th class="cost-value">单个成本</th>
                   <th class="cost-status">状态</th>

@@ -3,7 +3,7 @@
   'use strict';
 
   const STORAGE_KEY = 'dopamine-pricing-web-v1';
-  const STATE_VERSION = 1;
+  const STATE_VERSION = 2;
   const SCALE = 1000000n;
 
   const $ = id => document.getElementById(id);
@@ -67,15 +67,33 @@
   let state = clone(savedState);
   let dirty = false;
 
+  function normalizeState(parsed) {
+    if (!parsed || !Array.isArray(parsed.costItems) || !Array.isArray(parsed.packages) || !parsed.packages.length) return null;
+    if (parsed.version === 1) {
+      parsed = clone(parsed);
+      parsed.version = STATE_VERSION;
+      parsed.costItems = parsed.costItems.map(item => ({
+        ...item,
+        type: 'product',
+        components: []
+      }));
+      return parsed;
+    }
+    if (parsed.version !== STATE_VERSION) return null;
+    parsed = clone(parsed);
+    parsed.costItems = parsed.costItems.map(item => ({
+      ...item,
+      type: item.type === 'combo' ? 'combo' : 'product',
+      components: Array.isArray(item.components) ? item.components : []
+    }));
+    return parsed;
+  }
+
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return defaultState();
-      const parsed = JSON.parse(raw);
-      if (parsed?.version !== STATE_VERSION) return defaultState();
-      if (!Array.isArray(parsed.costItems) || !Array.isArray(parsed.packages)) return defaultState();
-      if (!parsed.packages.length) return defaultState();
-      return parsed;
+      return normalizeState(JSON.parse(raw)) || defaultState();
     } catch {
       return defaultState();
     }
@@ -114,8 +132,41 @@
     return state.costItems.find(item => item.id === id);
   }
 
+  function effectiveCostById(id, visiting = new Set()) {
+    const item = costItem(id);
+    if (!item) return 0n;
+    if (item.type !== 'combo') return nonNegative(item.cost ?? '0');
+    if (visiting.has(id)) return 0n;
+    const nextVisiting = new Set(visiting);
+    nextVisiting.add(id);
+    return (item.components || []).reduce((sum, component) => {
+      if (!component.costItemId || component.costItemId === id) return sum;
+      const componentCost = effectiveCostById(component.costItemId, nextVisiting);
+      return add(sum, mul(componentCost, nonNegative(component.qty)));
+    }, 0n);
+  }
+
   function unitCost(row) {
-    return nonNegative(costItem(row.costItemId)?.cost ?? '0');
+    return effectiveCostById(row.costItemId);
+  }
+
+  function comboReferences(targetId) {
+    return state.costItems.some(item => item.type === 'combo' && (item.components || []).some(c => c.costItemId === targetId));
+  }
+
+  function wouldCreateCycle(comboId, candidateId) {
+    if (!candidateId) return false;
+    if (comboId === candidateId) return true;
+    const seen = new Set();
+    function reaches(id) {
+      if (id === comboId) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      const item = costItem(id);
+      if (!item || item.type !== 'combo') return false;
+      return (item.components || []).some(c => c.costItemId && reaches(c.costItemId));
+    }
+    return reaches(candidateId);
   }
 
   function qty(row) {
@@ -179,7 +230,8 @@
       .filter(item => item.active || item.id === selectedId)
       .map(item => {
         const disabled = selectedIds.has(item.id) && item.id !== selectedId;
-        const label = item.spec ? `${item.name} · ${item.spec}` : item.name;
+        const baseLabel = item.spec ? `${item.name} · ${item.spec}` : item.name;
+        const label = item.type === 'combo' ? `[组合] ${baseLabel}` : baseLabel;
         return `<option value="${item.id}" ${item.id===selectedId?'selected':''} ${disabled?'disabled':''}>${escapeHtml(label)}</option>`;
       }).join('');
   }
@@ -409,35 +461,80 @@
       </tr>`).join('');
   }
 
+  function componentOptions(combo, component) {
+    const selectedElsewhere = new Set((combo.components || [])
+      .filter(c => c.id !== component.id && c.costItemId)
+      .map(c => c.costItemId));
+    return state.costItems
+      .filter(item => item.id !== combo.id)
+      .map(item => {
+        const blocked = selectedElsewhere.has(item.id) || wouldCreateCycle(combo.id, item.id);
+        const baseLabel = item.spec ? `${item.name} · ${item.spec}` : item.name;
+        const label = item.type === 'combo' ? `[组合] ${baseLabel}` : baseLabel;
+        return `<option value="${item.id}" ${item.id===component.costItemId?'selected':''} ${blocked && item.id!==component.costItemId?'disabled':''}>${escapeHtml(label)}</option>`;
+      }).join('');
+  }
+
   function renderCostItems() {
     if (!state.costItems.length) {
-      $('costBody').innerHTML = `<tr><td class="empty-cell" colspan="6">暂无固定成本产品，点击右上角“添加产品”开始录入。</td></tr>`;
+      $('costBody').innerHTML = `<tr><td class="empty-cell" colspan="8">暂无固定成本产品，可添加普通产品，也可以创建由多个产品组成的组合。</td></tr>`;
       return;
     }
 
-    $('costBody').innerHTML = state.costItems.map((item,index)=>`
-      <tr>
+    $('costBody').innerHTML = state.costItems.map((item,index) => {
+      const isCombo = item.type === 'combo';
+      const components = Array.isArray(item.components) ? item.components : [];
+      const componentCell = isCombo ? `
+        <div class="component-stack">
+          ${components.map(component => `
+            <div class="component-line">
+              <select class="component-select" data-item="${item.id}" data-component="${component.id}">
+                <option value="">请选择成份</option>
+                ${componentOptions(item, component)}
+              </select>
+              <button class="component-remove" data-item="${item.id}" data-component="${component.id}" title="删除成份">×</button>
+            </div>`).join('')}
+          <button class="component-add add-component" data-item="${item.id}">＋ 添加成份</button>
+        </div>` : `<div class="cell center slash-cell">/</div>`;
+      const quantityCell = isCombo ? `
+        <div class="component-qty-stack">
+          ${components.map(component => `
+            <div class="component-line">
+              <input class="component-qty-input" data-item="${item.id}" data-component="${component.id}" value="${escapeHtml(component.qty)}" inputmode="decimal" />
+            </div>`).join('')}
+        </div>` : `<div class="cell center slash-cell">/</div>`;
+      const costCell = isCombo
+        ? `<div class="cell combo-cost">${unitMoney(effectiveCostById(item.id))}</div>`
+        : `<div class="inline-value"><span>¥</span><input class="cell-input cost-value-input" data-id="${item.id}" value="${escapeHtml(item.cost)}" inputmode="decimal" /></div>`;
+
+      return `<tr class="${isCombo?'cost-row-combo':''}">
         <td class="rank"><div class="cell center">${index+1}</div></td>
-        <td><input class="cell-input cost-name-input" data-id="${item.id}" value="${escapeHtml(item.name)}" /></td>
-        <td><input class="cell-input cost-spec-input" data-id="${item.id}" value="${escapeHtml(item.spec)}" /></td>
         <td>
-          <div class="inline-value"><span>¥</span><input class="cell-input cost-value-input" data-id="${item.id}" value="${escapeHtml(item.cost)}" inputmode="decimal" /></div>
+          <div style="display:flex;align-items:center;height:35px">
+            <input class="cell-input cost-name-input" data-id="${item.id}" value="${escapeHtml(item.name)}" />
+            ${isCombo?'<span class="cost-kind">组合</span>':''}
+          </div>
         </td>
+        <td>${componentCell}</td>
+        <td>${quantityCell}</td>
+        <td><input class="cell-input cost-spec-input" data-id="${item.id}" value="${escapeHtml(item.spec)}" /></td>
+        <td class="${isCombo?'auto':''}">${costCell}</td>
         <td>
           <select class="cell-select cost-active-select" data-id="${item.id}">
             <option value="1" ${item.active?'selected':''}>启用</option>
             <option value="0" ${!item.active?'selected':''}>停用</option>
           </select>
         </td>
-        <td class="compact-action"><div class="cell center"><button class="delete-icon delete-cost-item" data-id="${item.id}" title="删除产品">×</button></div></td>
-      </tr>`).join('');
+        <td class="compact-action"><div class="cell center"><button class="delete-icon delete-cost-item" data-id="${item.id}" title="删除">×</button></div></td>
+      </tr>`;
+    }).join('');
 
     document.querySelectorAll('.cost-name-input').forEach(el => {
       el.oninput = e => {
         const item = costItem(e.currentTarget.dataset.id);
         if (!item) return;
         item.name = e.currentTarget.value;
-        markDirty(); renderPackageSelect(); renderProducts();
+        markDirty(); renderProducts();
       };
     });
     document.querySelectorAll('.cost-spec-input').forEach(el => {
@@ -451,9 +548,9 @@
     document.querySelectorAll('.cost-value-input').forEach(el => {
       el.oninput = e => {
         const item = costItem(e.currentTarget.dataset.id);
-        if (!item) return;
+        if (!item || item.type === 'combo') return;
         item.cost = e.currentTarget.value;
-        markDirty(); renderProducts(); renderSummary();
+        markDirty(); renderCostItems(); renderProducts(); renderSummary();
       };
     });
     document.querySelectorAll('.cost-active-select').forEach(el => {
@@ -464,12 +561,55 @@
         markDirty(); renderProducts();
       };
     });
+    document.querySelectorAll('.add-component').forEach(el => {
+      el.onclick = e => {
+        const combo = costItem(e.currentTarget.dataset.item);
+        if (!combo || combo.type !== 'combo') return;
+        const used = new Set((combo.components || []).map(c => c.costItemId).filter(Boolean));
+        const candidate = state.costItems.find(item => item.id !== combo.id && item.active && !used.has(item.id) && !wouldCreateCycle(combo.id, item.id));
+        combo.components.push({id:uid('cmp'), costItemId:candidate?.id || '', qty:'1'});
+        markDirty(); renderCostItems(); renderProducts(); renderSummary();
+      };
+    });
+    document.querySelectorAll('.component-select').forEach(el => {
+      el.onchange = e => {
+        const combo = costItem(e.currentTarget.dataset.item);
+        const component = combo?.components?.find(c => c.id === e.currentTarget.dataset.component);
+        if (!combo || !component) return;
+        const nextId = e.currentTarget.value;
+        if (nextId && wouldCreateCycle(combo.id, nextId)) {
+          toast('该选择会形成循环组合');
+          renderCostItems();
+          return;
+        }
+        component.costItemId = nextId;
+        markDirty(); renderCostItems(); renderProducts(); renderSummary();
+      };
+    });
+    document.querySelectorAll('.component-qty-input').forEach(el => {
+      el.oninput = e => {
+        const combo = costItem(e.currentTarget.dataset.item);
+        const component = combo?.components?.find(c => c.id === e.currentTarget.dataset.component);
+        if (!component) return;
+        component.qty = e.currentTarget.value;
+        markDirty(); renderCostItems(); renderProducts(); renderSummary();
+      };
+    });
+    document.querySelectorAll('.component-remove').forEach(el => {
+      el.onclick = e => {
+        const combo = costItem(e.currentTarget.dataset.item);
+        if (!combo) return;
+        combo.components = (combo.components || []).filter(c => c.id !== e.currentTarget.dataset.component);
+        markDirty(); renderCostItems(); renderProducts(); renderSummary();
+      };
+    });
     document.querySelectorAll('.delete-cost-item').forEach(el => {
       el.onclick = e => {
         const id = e.currentTarget.dataset.id;
-        const used = state.packages.some(p => p.products.some(row => row.costItemId === id));
-        if (used) {
-          toast('该产品已被套餐使用，暂不能删除');
+        const usedByPackage = state.packages.some(p => p.products.some(row => row.costItemId === id));
+        const usedByCombo = comboReferences(id);
+        if (usedByPackage || usedByCombo) {
+          toast(usedByCombo ? '该项目已被组合引用，暂不能删除' : '该项目已被套餐使用，暂不能删除');
           return;
         }
         state.costItems = state.costItems.filter(item => item.id !== id);
@@ -493,7 +633,21 @@
   };
 
   $('addCostItemBtn').onclick = () => {
-    state.costItems.push({id:uid('cost'),name:'新产品',spec:'',cost:'0',active:true});
+    state.costItems.push({id:uid('cost'),type:'product',name:'新产品',spec:'',cost:'0',active:true,components:[]});
+    markDirty(); renderAll();
+  };
+
+  $('addComboItemBtn').onclick = () => {
+    const first = state.costItems.find(item => item.active);
+    state.costItems.push({
+      id:uid('cost'),
+      type:'combo',
+      name:'新组合',
+      spec:'',
+      cost:'0',
+      active:true,
+      components:first ? [{id:uid('cmp'),costItemId:first.id,qty:'1'}] : []
+    });
     markDirty(); renderAll();
   };
 
@@ -594,10 +748,8 @@
     e.currentTarget.value = '';
     if (!file) return;
     try {
-      const parsed = JSON.parse(await file.text());
-      if (parsed?.version !== STATE_VERSION || !Array.isArray(parsed.costItems) || !Array.isArray(parsed.packages) || !parsed.packages.length) {
-        throw new Error('invalid');
-      }
+      const parsed = normalizeState(JSON.parse(await file.text()));
+      if (!parsed) throw new Error('invalid');
       if (!confirm('恢复备份会替换当前页面中的数据，是否继续？')) return;
       state = parsed;
       if (!state.packages.some(p => p.id === state.currentPackageId)) state.currentPackageId = state.packages[0].id;

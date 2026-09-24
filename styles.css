@@ -133,8 +133,21 @@ th.sticky{z-index:9}
 .summary-note{padding:8px 12px;border-top:1px solid var(--line);background:#fbfcfd;color:var(--muted);font-size:12px}
 
 .cost-manager{height:680px;margin-top:10px}
-.cost-table{width:100%;min-width:900px}
-.cost-name{width:220px}.cost-spec{width:250px}.cost-value{width:160px}.cost-status{width:120px}
+.cost-table{width:100%;min-width:1180px}
+.cost-name{width:190px}.cost-components{width:290px}.cost-component-qty{width:135px}.cost-spec{width:220px}.cost-value{width:160px}.cost-status{width:120px}
+.cost-row-combo td{vertical-align:top}
+.component-stack,.component-qty-stack{padding:5px 6px;display:flex;flex-direction:column;gap:5px}
+.component-line{display:flex;align-items:center;gap:5px;min-height:30px}
+.component-line select{flex:1;min-width:0;height:30px}
+.component-line input{width:100%;height:30px}
+.component-remove{width:24px;height:24px;border:0;background:transparent;color:var(--muted-2);font-size:16px;border-radius:5px}
+.component-remove:hover{color:var(--danger);background:var(--danger-soft)}
+.component-add{align-self:flex-start;border:0;background:transparent;color:var(--primary);padding:4px 3px;font-weight:650}
+.component-add:hover{text-decoration:underline}
+.cost-kind{font-size:10px;color:var(--primary);background:var(--primary-soft);border-radius:999px;padding:2px 6px;margin-left:6px;vertical-align:middle}
+.combo-cost{background:var(--calc)}
+.slash-cell{color:var(--muted-2);text-align:center}
+
 
 .empty-cell{padding:28px!important;text-align:center;color:var(--muted)}
 .toast{
