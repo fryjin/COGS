@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Dopamine 套餐售价、成本、折扣与利润计算工具" />
+  <title>Dopamine · 售价计算</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">D</div>
+        <div>
+          <div class="brand-title">Dopamine</div>
+          <div class="brand-subtitle">售价计算</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="saveState" class="save-state"></span>
+        <button class="btn ghost" id="backupBtn">导出备份</button>
+        <button class="btn ghost" id="restoreBtn">恢复备份</button>
+        <input id="restoreInput" type="file" accept=".json,application/json" hidden />
+        <button class="btn" id="resetBtn">取消修改</button>
+        <button class="btn primary" id="saveBtn">保存</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-head">
+        <div class="title-row">
+          <h1>售价计算</h1>
+          <div class="tabs">
+            <button class="tab" data-view="cost">固定成本管理</button>
+            <button class="tab active" data-view="pricing">套餐售价计算</button>
+          </div>
+        </div>
+        <div class="legend">白色单元格可编辑 · 浅灰蓝单元格自动计算</div>
+      </div>
+
+      <section id="pricingView" class="view active">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <label class="inline-field">
+              <span>套餐</span>
+              <select id="packageSelect" class="package-select"></select>
+            </label>
+            <button class="btn" id="newPackageBtn">＋ 新建套餐</button>
+            <button class="btn" id="copyPackageBtn">复制套餐</button>
+            <button class="btn" id="renamePackageBtn">重命名</button>
+            <button class="btn danger-light" id="deletePackageBtn">删除套餐</button>
+          </div>
+          <button class="btn" id="addDiscountBtn">＋ 添加折扣方案</button>
+        </div>
+
+        <div class="worksheet">
+          <section class="block products-block">
+            <div class="block-head">
+              <div class="block-title"><span class="step">1</span>产品售价与成本计算区</div>
+              <div class="block-note">产品、数量、单品标价可编辑；成本与利润自动计算</div>
+            </div>
+            <div class="table-scroll" id="productScroll">
+              <table id="productTable">
+                <thead id="productHead"></thead>
+                <tbody id="productBody"></tbody>
+              </table>
+            </div>
+            <div class="row-actions">
+              <button class="inline-add" id="addProductBtn">＋ 添加产品</button>
+            </div>
+          </section>
+
+          <section class="block fees-block">
+            <div class="block-head">
+              <div class="block-title"><span class="step">2</span>附加成本计算区</div>
+              <div class="block-note">包装、人工、运费、平台费等；固定金额 / 售价百分比</div>
+            </div>
+            <div class="table-scroll">
+              <table class="fee-table">
+                <thead>
+                  <tr>
+                    <th class="fee-name">费用名称</th>
+                    <th class="fee-type">计算方式</th>
+                    <th class="fee-value">数值</th>
+                    <th class="fee-result">原价方案费用</th>
+                    <th class="compact-action">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="feeBody"></tbody>
+              </table>
+            </div>
+            <div class="row-actions">
+              <button class="inline-add" id="addFeeBtn">＋ 添加费用</button>
+            </div>
+          </section>
+
+          <section class="block summary-block">
+            <div class="block-head">
+              <div class="block-title"><span class="step">3</span>合计结果区</div>
+              <div class="block-note">原价与多个折扣方案横向对比</div>
+            </div>
+            <div class="summary-scroll">
+              <table class="summary-table">
+                <thead id="summaryHead"></thead>
+                <tbody id="summaryBody"></tbody>
+              </table>
+            </div>
+            <div class="summary-note">商品利润小计只扣商品成本；最终套餐利润会继续扣除附加成本。</div>
+          </section>
+        </div>
+      </section>
+
+      <section id="costView" class="view">
+        <div class="toolbar">
+          <div>
+            <strong>固定成本管理</strong>
+            <span class="toolbar-help">维护已确定的产品单个成本，套餐计算自动引用。</span>
+          </div>
+          <button class="btn primary" id="addCostItemBtn">＋ 添加产品</button>
+        </div>
+        <section class="block cost-manager">
+          <div class="table-scroll">
+            <table class="cost-table">
+              <thead>
+                <tr>
+                  <th class="rank">排序</th>
+                  <th class="cost-name">产品品类</th>
+                  <th class="cost-spec">规格 / 备注</th>
+                  <th class="cost-value">单个成本</th>
+                  <th class="cost-status">状态</th>
+                  <th class="compact-action">操作</th>
+                </tr>
+              </thead>
+              <tbody id="costBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./app.js" defer></script>
+</body>
+</html>
