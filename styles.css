@@ -80,7 +80,7 @@ input:focus,select:focus{border-color:#9aa5ef;box-shadow:0 0 0 3px rgba(79,95,21
 .block-head{height:42px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--line)}
 .block-title{display:flex;align-items:center;gap:8px;font-weight:750}
 .step{width:21px;height:21px;border-radius:6px;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-size:11px;font-weight:800}
-.table-scroll,.summary-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+.table-scroll,.summary-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:auto}
 table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
 th,td{
   height:36px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
@@ -176,3 +176,51 @@ th.sticky{z-index:9}
   .worksheet{grid-template-rows:340px 210px 260px}
   .cost-manager{height:420px}
 }
+
+
+/* V4: compact laptop layout — keep discount comparison visible on the first screen. */
+@media(max-width:1500px){
+  body{font-size:12px}
+  th{padding:0 4px}
+  .rank{width:36px;min-width:36px}
+  .product-col{width:110px;min-width:110px}
+  .qty-col{width:60px;min-width:60px}
+  .money-col{width:78px;min-width:78px}
+  .profit-col{width:92px;min-width:92px}
+  .compact-action{width:34px;min-width:34px}
+
+  .s0{left:0}
+  .s1{left:36px}
+  .s2{left:146px}
+  .s3{left:206px}
+  .s4{left:284px}
+  .s5{left:362px}
+  .s6{left:440px}
+  .s7{left:518px}
+  .s8{left:596px}
+
+  .cell{padding:0 5px}
+  .cell-input,.cell-select{padding:0 5px}
+  .rate-editor{gap:2px}
+  .rate-editor input{width:45px}
+}
+
+@media(max-width:1250px){
+  .content{min-width:860px}
+  .rank{width:32px;min-width:32px}
+  .product-col{width:100px;min-width:100px}
+  .qty-col{width:56px;min-width:56px}
+  .money-col{width:72px;min-width:72px}
+  .profit-col{width:86px;min-width:86px}
+
+  .s0{left:0}
+  .s1{left:32px}
+  .s2{left:132px}
+  .s3{left:188px}
+  .s4{left:260px}
+  .s5{left:332px}
+  .s6{left:404px}
+  .s7{left:476px}
+  .s8{left:548px}
+}
+

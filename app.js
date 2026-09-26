@@ -618,6 +618,28 @@
     });
   }
 
+
+  function enableVerticalScrollHandoff() {
+    document.querySelectorAll('.table-scroll, .summary-scroll').forEach(scroller => {
+      if (scroller.dataset.scrollHandoff === '1') return;
+      scroller.dataset.scrollHandoff = '1';
+
+      scroller.addEventListener('wheel', event => {
+        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+
+        const atTop = scroller.scrollTop <= 0;
+        const atBottom = Math.ceil(scroller.scrollTop + scroller.clientHeight) >= scroller.scrollHeight - 1;
+        const leavingTop = event.deltaY < 0 && atTop;
+        const leavingBottom = event.deltaY > 0 && atBottom;
+
+        if (leavingTop || leavingBottom) {
+          event.preventDefault();
+          window.scrollBy({ top: event.deltaY, left: 0, behavior: 'auto' });
+        }
+      }, { passive: false });
+    });
+  }
+
   function renderAll() {
     renderPackageSelect();
     renderProducts();
@@ -625,6 +647,7 @@
     renderSummary();
     renderCostItems();
     updateSaveState();
+    enableVerticalScrollHandoff();
   }
 
   $('packageSelect').onchange = e => {
