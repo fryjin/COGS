@@ -32,7 +32,7 @@
         <div class="title-row">
           <h1>售价计算</h1>
           <div class="tabs">
-            <button class="tab" data-view="cost">固定成本管理</button>
+            <button class="tab" data-view="cost">出厂价格设置</button>
             <button class="tab active" data-view="pricing">套餐售价计算</button>
           </div>
         </div>
@@ -51,7 +51,11 @@
             <button class="btn" id="renamePackageBtn">重命名</button>
             <button class="btn danger-light" id="deletePackageBtn">删除套餐</button>
           </div>
-          <button class="btn" id="addDiscountBtn">＋ 添加折扣方案</button>
+          <div class="toolbar-right">
+            <button class="btn" id="addProductBtn">＋ 添加产品</button>
+            <button class="btn" id="addFeeBtn">＋ 添加费用</button>
+            <button class="btn" id="addDiscountBtn">＋ 添加折扣方案</button>
+          </div>
         </div>
 
         <div class="worksheet">
@@ -65,9 +69,6 @@
                 <thead id="productHead"></thead>
                 <tbody id="productBody"></tbody>
               </table>
-            </div>
-            <div class="row-actions">
-              <button class="inline-add" id="addProductBtn">＋ 添加产品</button>
             </div>
           </section>
 
@@ -90,9 +91,6 @@
                 <tbody id="feeBody"></tbody>
               </table>
             </div>
-            <div class="row-actions">
-              <button class="inline-add" id="addFeeBtn">＋ 添加费用</button>
-            </div>
           </section>
 
           <section class="block summary-block">
@@ -114,8 +112,8 @@
       <section id="costView" class="view">
         <div class="toolbar">
           <div>
-            <strong>固定成本管理</strong>
-            <span class="toolbar-help">维护已确定的产品单个成本，套餐计算自动引用。</span>
+            <strong>出厂价格设置</strong>
+            <span class="toolbar-help">维护产品与组合的出厂价格，套餐售价计算自动引用。</span>
           </div>
           <div class="toolbar-left">
             <button class="btn" id="addCostItemBtn">＋ 添加产品</button>

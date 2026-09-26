@@ -311,6 +311,18 @@
     bindProductEvents();
   }
 
+  function bindCommittedNumber(selector, commit) {
+    document.querySelectorAll(selector).forEach(el => {
+      el.onkeydown = e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      };
+      el.onchange = e => commit(e.currentTarget);
+    });
+  }
+
   function bindProductEvents() {
     document.querySelectorAll('.product-select').forEach(el => {
       el.onchange = e => {
@@ -320,21 +332,17 @@
         markDirty(); renderAll();
       };
     });
-    document.querySelectorAll('.qty-input').forEach(el => {
-      el.oninput = e => {
-        const row = currentPackage().products.find(r => r.id === e.currentTarget.dataset.id);
-        if (!row) return;
-        row.qty = e.currentTarget.value;
-        markDirty(); renderProducts(); renderFees(); renderSummary();
-      };
+    bindCommittedNumber('.qty-input', el => {
+      const row = currentPackage().products.find(r => r.id === el.dataset.id);
+      if (!row) return;
+      row.qty = el.value;
+      markDirty(); renderProducts(); renderFees(); renderSummary();
     });
-    document.querySelectorAll('.price-input').forEach(el => {
-      el.oninput = e => {
-        const row = currentPackage().products.find(r => r.id === e.currentTarget.dataset.id);
-        if (!row) return;
-        row.listPrice = e.currentTarget.value;
-        markDirty(); renderProducts(); renderFees(); renderSummary();
-      };
+    bindCommittedNumber('.price-input', el => {
+      const row = currentPackage().products.find(r => r.id === el.dataset.id);
+      if (!row) return;
+      row.listPrice = el.value;
+      markDirty(); renderProducts(); renderFees(); renderSummary();
     });
     document.querySelectorAll('.delete-product').forEach(el => {
       el.onclick = e => {
@@ -343,13 +351,11 @@
         markDirty(); renderAll();
       };
     });
-    document.querySelectorAll('.discount-input').forEach(el => {
-      el.oninput = e => {
-        const d = currentPackage().discounts.find(x => x.id === e.currentTarget.dataset.id);
-        if (!d) return;
-        d.zhe = e.currentTarget.value;
-        markDirty(); renderProducts(); renderFees(); renderSummary();
-      };
+    bindCommittedNumber('.discount-input', el => {
+      const d = currentPackage().discounts.find(x => x.id === el.dataset.id);
+      if (!d) return;
+      d.zhe = el.value;
+      markDirty(); renderProducts(); renderFees(); renderSummary();
     });
     document.querySelectorAll('.delete-discount').forEach(el => {
       el.onclick = e => {
@@ -410,13 +416,11 @@
         markDirty(); renderFees(); renderSummary();
       };
     });
-    document.querySelectorAll('.fee-value-input').forEach(el => {
-      el.oninput = e => {
-        const fee = pkg.fees.find(f => f.id === e.currentTarget.dataset.id);
-        if (!fee) return;
-        fee.value = e.currentTarget.value;
-        markDirty(); renderFees(); renderSummary();
-      };
+    bindCommittedNumber('.fee-value-input', el => {
+      const fee = pkg.fees.find(f => f.id === el.dataset.id);
+      if (!fee) return;
+      fee.value = el.value;
+      markDirty(); renderFees(); renderSummary();
     });
     document.querySelectorAll('.delete-fee').forEach(el => {
       el.onclick = e => {
@@ -477,7 +481,7 @@
 
   function renderCostItems() {
     if (!state.costItems.length) {
-      $('costBody').innerHTML = `<tr><td class="empty-cell" colspan="8">暂无固定成本产品，可添加普通产品，也可以创建由多个产品组成的组合。</td></tr>`;
+      $('costBody').innerHTML = `<tr><td class="empty-cell" colspan="8">暂无出厂价格产品，可添加普通产品，也可以创建由多个产品组成的组合。</td></tr>`;
       return;
     }
 
@@ -545,13 +549,11 @@
         markDirty(); renderProducts();
       };
     });
-    document.querySelectorAll('.cost-value-input').forEach(el => {
-      el.oninput = e => {
-        const item = costItem(e.currentTarget.dataset.id);
-        if (!item || item.type === 'combo') return;
-        item.cost = e.currentTarget.value;
-        markDirty(); renderCostItems(); renderProducts(); renderSummary();
-      };
+    bindCommittedNumber('.cost-value-input', el => {
+      const item = costItem(el.dataset.id);
+      if (!item || item.type === 'combo') return;
+      item.cost = el.value;
+      markDirty(); renderCostItems(); renderProducts(); renderSummary();
     });
     document.querySelectorAll('.cost-active-select').forEach(el => {
       el.onchange = e => {
@@ -586,14 +588,12 @@
         markDirty(); renderCostItems(); renderProducts(); renderSummary();
       };
     });
-    document.querySelectorAll('.component-qty-input').forEach(el => {
-      el.oninput = e => {
-        const combo = costItem(e.currentTarget.dataset.item);
-        const component = combo?.components?.find(c => c.id === e.currentTarget.dataset.component);
-        if (!component) return;
-        component.qty = e.currentTarget.value;
-        markDirty(); renderCostItems(); renderProducts(); renderSummary();
-      };
+    bindCommittedNumber('.component-qty-input', el => {
+      const combo = costItem(el.dataset.item);
+      const component = combo?.components?.find(c => c.id === el.dataset.component);
+      if (!component) return;
+      component.qty = el.value;
+      markDirty(); renderCostItems(); renderProducts(); renderSummary();
     });
     document.querySelectorAll('.component-remove').forEach(el => {
       el.onclick = e => {
@@ -656,7 +656,7 @@
     const selected = new Set(pkg.products.map(r => r.costItemId));
     const first = state.costItems.find(item => item.active && !selected.has(item.id));
     if (!first) {
-      toast(state.costItems.length ? '没有可继续添加的启用产品' : '请先在固定成本管理中添加产品');
+      toast(state.costItems.length ? '没有可继续添加的启用产品' : '请先在出厂价格设置中添加产品');
       return;
     }
     pkg.products.push({id:uid('row'),costItemId:first.id,qty:'1',listPrice:'0'});
