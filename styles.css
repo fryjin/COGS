@@ -72,7 +72,7 @@ input,select{
 }
 input:focus,select:focus{border-color:#9aa5ef;box-shadow:0 0 0 3px rgba(79,95,213,.10)}
 .package-select{min-width:180px;font-weight:650}
-.worksheet{display:grid;grid-template-rows:clamp(380px,45vh,600px) clamp(230px,28vh,330px) clamp(280px,34vh,420px);gap:12px;margin-top:10px}
+.worksheet{display:grid;grid-template-rows:clamp(760px,90vh,1200px) clamp(460px,56vh,660px) clamp(560px,68vh,840px);gap:12px;margin-top:10px}
 .block{
   background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;
   display:flex;flex-direction:column;min-height:0;box-shadow:0 2px 8px rgba(16,24,40,.025);
@@ -139,8 +139,8 @@ th.sticky{z-index:9}
 .summary-note{padding:8px 12px;border-top:1px solid var(--line);background:#fbfcfd;color:var(--muted);font-size:12px}
 
 .cost-manager{height:clamp(420px,68vh,720px);margin-top:10px}
-.cost-table{width:100%;min-width:1180px}
-.cost-name{width:190px}.cost-components{width:290px}.cost-component-qty{width:135px}.cost-spec{width:220px}.cost-value{width:160px}.cost-status{width:120px}
+.cost-table{width:100%;min-width:940px}
+.cost-name{width:125px}.cost-components{width:210px}.cost-component-qty{width:105px}.cost-spec{width:175px}.cost-value{width:105px}.cost-status{width:82px}
 .cost-row-combo td{vertical-align:top}
 .component-stack,.component-qty-stack{padding:5px 6px;display:flex;flex-direction:column;gap:5px}
 .component-line{display:flex;align-items:center;gap:5px;min-height:30px}
@@ -164,16 +164,16 @@ th.sticky{z-index:9}
 .toast.show{opacity:1;transform:translateY(0)}
 @media(max-width:1100px){
   .content{padding:0 10px 28px;min-width:900px}
-  .worksheet{grid-template-rows:clamp(360px,44vh,520px) clamp(220px,27vh,300px) clamp(270px,33vh,380px)}
+  .worksheet{grid-template-rows:clamp(720px,88vh,1040px) clamp(440px,54vh,600px) clamp(540px,66vh,760px)}
 }
 @media(max-height:820px){
-  .worksheet{grid-template-rows:380px 230px 290px}
+  .worksheet{grid-template-rows:760px 460px 580px}
   .cost-manager{height:480px}
   .page-head{min-height:54px;padding:7px 0 6px}
   .toolbar{top:112px;padding:8px 10px}
 }
 @media(max-height:700px){
-  .worksheet{grid-template-rows:340px 210px 260px}
+  .worksheet{grid-template-rows:680px 420px 520px}
   .cost-manager{height:420px}
 }
 
@@ -224,3 +224,23 @@ th.sticky{z-index:9}
   .s8{left:548px}
 }
 
+
+
+/* V5 factory table compact */
+.cost-table .rank{width:38px;min-width:38px}
+.cost-table .compact-action{width:40px;min-width:40px}
+.cost-table th{padding-left:5px;padding-right:5px}
+.cost-table .cell{padding-left:5px;padding-right:5px}
+.cost-table .cell-input,
+.cost-table .cell-select{padding-left:5px;padding-right:5px}
+.cost-table .component-stack,
+.cost-table .component-qty-stack{padding-left:4px;padding-right:4px}
+@media(max-width:1500px){
+  .cost-table{min-width:900px}
+  .cost-name{width:115px}
+  .cost-components{width:195px}
+  .cost-component-qty{width:96px}
+  .cost-spec{width:160px}
+  .cost-value{width:96px}
+  .cost-status{width:76px}
+}
