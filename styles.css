@@ -121,7 +121,7 @@ th{
 .rate-editor input{width:54px;height:26px;text-align:center;padding:2px 4px}
 .sticky{position:sticky;z-index:4}
 th.sticky{z-index:9}
-.s0{left:0}.s1{left:46px}.s2{left:196px}.s3{left:268px}.s4{left:376px}.s5{left:484px}.s6{left:592px}.s7{left:700px}.s8{left:808px;box-shadow:5px 0 10px -8px rgba(16,24,40,.45)}
+.s0{left:0}.s1{left:46px}.s2{left:196px}.s3{left:268px}.s4{left:376px}.s5{left:484px}.s6{left:592px;box-shadow:5px 0 10px -8px rgba(16,24,40,.45)}
 
 .fee-table{width:100%;min-width:820px}
 .fee-name{width:270px}.fee-type{width:190px}.fee-value{width:190px}.fee-result{width:210px}
@@ -139,8 +139,8 @@ th.sticky{z-index:9}
 .summary-note{padding:8px 12px;border-top:1px solid var(--line);background:#fbfcfd;color:var(--muted);font-size:12px}
 
 .cost-manager{height:clamp(420px,68vh,720px);margin-top:10px}
-.cost-table{width:100%;min-width:940px}
-.cost-name{width:125px}.cost-components{width:210px}.cost-component-qty{width:105px}.cost-spec{width:175px}.cost-value{width:105px}.cost-status{width:82px}
+.cost-table{width:100%;min-width:1020px}
+.cost-name{width:125px}.cost-components{width:210px}.cost-component-qty{width:105px}.cost-spec{width:175px}.cost-value{width:105px}.cost-list-price{width:105px}.cost-profit{width:105px}.cost-status{width:82px}
 .cost-row-combo td{vertical-align:top}
 .component-stack,.component-qty-stack{padding:5px 6px;display:flex;flex-direction:column;gap:5px}
 .component-line{display:flex;align-items:center;gap:5px;min-height:30px}
@@ -196,8 +196,6 @@ th.sticky{z-index:9}
   .s4{left:284px}
   .s5{left:362px}
   .s6{left:440px}
-  .s7{left:518px}
-  .s8{left:596px}
 
   .cell{padding:0 5px}
   .cell-input,.cell-select{padding:0 5px}
@@ -220,8 +218,6 @@ th.sticky{z-index:9}
   .s4{left:260px}
   .s5{left:332px}
   .s6{left:404px}
-  .s7{left:476px}
-  .s8{left:548px}
 }
 
 
@@ -236,12 +232,13 @@ th.sticky{z-index:9}
 .cost-table .component-stack,
 .cost-table .component-qty-stack{padding-left:4px;padding-right:4px}
 @media(max-width:1500px){
-  .cost-table{min-width:900px}
+  .cost-table{min-width:990px}
   .cost-name{width:115px}
   .cost-components{width:195px}
   .cost-component-qty{width:96px}
   .cost-spec{width:160px}
   .cost-value{width:96px}
+  .cost-list-price,.cost-profit{width:100px}
   .cost-status{width:76px}
 }
 
@@ -286,3 +283,10 @@ th.sticky{z-index:9}
 .batch-error{padding:9px 11px;margin-top:9px;border:1px solid #f2c4c0;background:#fff4f3;color:#b42318;border-radius:7px;white-space:pre-wrap;line-height:1.45}
 .batch-error[hidden]{display:none}
 @media(max-width:1500px){.page-head .title-row{flex-wrap:wrap}.project-controls{flex-wrap:wrap}}
+
+/* V7: additional price/profit columns and single-column paste target */
+.batch-paste-options{display:flex;align-items:center;gap:12px;margin:0 0 10px;flex-wrap:wrap}
+.batch-paste-options label{display:flex;align-items:center;gap:7px;color:var(--muted)}
+.batch-paste-options select{min-width:146px}
+.batch-paste-options label[hidden]{display:none}
+.cost-list-price,.cost-profit{min-width:95px}

@@ -3,7 +3,7 @@
   'use strict';
 
   const STORAGE_KEY = 'dopamine-pricing-web-v1';
-  const STATE_VERSION = 3;
+  const STATE_VERSION = 4;
   const SCALE = 1000000n;
 
   const $ = id => document.getElementById(id);
@@ -81,7 +81,8 @@
     return (Array.isArray(items) ? items : []).map(item => ({
       ...item,
       type: item.type === 'combo' ? 'combo' : 'product',
-      components: Array.isArray(item.components) ? item.components : []
+      components: Array.isArray(item.components) ? item.components : [],
+      listPrice: String(item.listPrice ?? '0')
     }));
   }
 
@@ -101,33 +102,71 @@
     };
   }
 
+  // V1-V6 stored prices separately on package rows. V7 owns prices by product.
+  // When the same original product had different package prices, split its
+  // product identity to preserve ALL previous package totals and profits.
+  function migrateLegacyProductPrices(project) {
+    const originalById = new Map(project.costItems.map(item => [item.id, item]));
+    const byPrice = new Map();
+    for (const pkg of project.packages) {
+      for (const row of pkg.products) {
+        const origin = originalById.get(row.costItemId);
+        if (!origin) continue;
+        const rawPrice = String(row.listPrice ?? '0');
+        const key = parseDecimal(rawPrice).toString();
+        let variants = byPrice.get(origin.id);
+        if (!variants) { variants = new Map(); byPrice.set(origin.id, variants); }
+        let item = variants.get(key);
+        if (!item) {
+          if (!variants.size) {
+            item = origin;
+          } else {
+            item = clone(origin);
+            item.id = uid('cost');
+            // Keep the original product label but distinguish the legacy price.
+            const suffix = `旧售价${rawPrice}`;
+            item.spec = `${origin.spec ? origin.spec + ' / ' : ''}${suffix}`;
+            const used = new Set(project.costItems.map(v => `${v.name}\u0000${v.spec}`));
+            while (used.has(`${item.name}\u0000${item.spec}`)) item.spec += '·';
+            item.components = (item.components || []).map(c => ({...c, id:uid('cmp')}));
+            project.costItems.push(item);
+          }
+          item.listPrice = rawPrice;
+          variants.set(key, item);
+        }
+        row.costItemId = item.id;
+        delete row.listPrice;
+      }
+    }
+    // Products not used in any package still acquire a zero default.
+    for (const item of project.costItems) item.listPrice = String(item.listPrice ?? '0');
+    return project;
+  }
+
   function normalizeState(parsed) {
     if (!parsed || typeof parsed !== 'object') return null;
-
-    // V1/V2 -> V3: preserve all existing data by wrapping it into the first project.
-    if ((parsed.version === 1 || parsed.version === 2) && Array.isArray(parsed.costItems) && Array.isArray(parsed.packages) && parsed.packages.length) {
-      const migratedProject = normalizeProject({
-        id: uid('proj'),
-        name: '项目1',
-        currentPackageId: parsed.currentPackageId,
+    if ((parsed.version === 1 || parsed.version === 2) &&
+        Array.isArray(parsed.costItems) && Array.isArray(parsed.packages) && parsed.packages.length) {
+      const project = normalizeProject({
+        id: uid('proj'), name:'项目1', currentPackageId: parsed.currentPackageId,
         costItems: parsed.version === 1
-          ? parsed.costItems.map(item => ({...item, type:'product', components:[]}))
+          ? parsed.costItems.map(item => ({...item,type:'product',components:[]}))
           : parsed.costItems,
         packages: parsed.packages
       });
-      return {
-        version: STATE_VERSION,
-        currentProjectId: migratedProject.id,
-        projects: [migratedProject]
-      };
+      migrateLegacyProductPrices(project);
+      return {version:STATE_VERSION,currentProjectId:project.id,projects:[project]};
     }
-
-    if (parsed.version !== STATE_VERSION || !Array.isArray(parsed.projects) || !parsed.projects.length) return null;
-    const projects = parsed.projects.map((project, index) => normalizeProject(project, `项目${index + 1}`));
-    const currentProjectId = projects.some(project => project.id === parsed.currentProjectId)
-      ? parsed.currentProjectId
-      : projects[0].id;
-    return {version: STATE_VERSION, currentProjectId, projects};
+    if (![3, STATE_VERSION].includes(parsed.version) ||
+        !Array.isArray(parsed.projects) || !parsed.projects.length) return null;
+    const projects = parsed.projects.map((project,index) => {
+      const normalized = normalizeProject(project, `项目${index+1}`);
+      if (parsed.version < STATE_VERSION) migrateLegacyProductPrices(normalized);
+      return normalized;
+    });
+    const currentProjectId = projects.some(p=>p.id===parsed.currentProjectId)
+      ? parsed.currentProjectId : projects[0].id;
+    return {version:STATE_VERSION,currentProjectId,projects};
   }
 
   function loadState() {
@@ -141,9 +180,13 @@
   }
 
   // Initialize the editable workspace from the last saved browser snapshot.
+  let migrationPending = (() => {
+    try { const raw=localStorage.getItem(STORAGE_KEY); return !!raw && JSON.parse(raw).version < STATE_VERSION; }
+    catch { return false; }
+  })();
   let savedState = loadState();
   let state = clone(savedState);
-  let dirty = false;
+  let dirty = migrationPending;
 
   function persist() {
     try {
@@ -153,6 +196,7 @@
       return;
     }
     savedState = clone(state);
+    migrationPending = false;
     dirty = false;
     updateSaveState();
     toast('已保存');
@@ -164,7 +208,7 @@
   }
 
   function updateSaveState() {
-    $('saveState').textContent = dirty ? '有未保存的修改' : '已保存到本机';
+    $('saveState').textContent = dirty ? (migrationPending ? '旧数据已兼容升级，请保存' : '有未保存的修改') : '已保存到本机';
   }
 
   function toast(message) {
@@ -230,7 +274,7 @@
   }
 
   function price(row) {
-    return nonNegative(row.listPrice);
+    return nonNegative(costItem(row.costItemId)?.listPrice ?? '0');
   }
 
   function discountFactor(discount) {
@@ -313,10 +357,8 @@
         <th rowspan="2" class="qty-col sticky s2">产品数量</th>
         <th rowspan="2" class="money-col sticky s3">单品成本</th>
         <th rowspan="2" class="money-col sticky s4">成本小计</th>
-        <th rowspan="2" class="money-col sticky s5">单品标价</th>
-        <th rowspan="2" class="money-col sticky s6">单品利润</th>
-        <th rowspan="2" class="money-col sticky s7">标价小计</th>
-        <th rowspan="2" class="profit-col sticky s8">商品利润小计</th>
+        <th rowspan="2" class="money-col sticky s5">标价小计</th>
+        <th rowspan="2" class="profit-col sticky s6">商品利润小计</th>
         ${pkg.discounts.map(d => `
           <th colspan="2" class="discount-group">
             <div class="rate-editor">
@@ -332,7 +374,7 @@
       </tr>`;
 
     if (!pkg.products.length) {
-      $('productBody').innerHTML = `<tr><td class="empty-cell" colspan="${10 + pkg.discounts.length*2}">暂无产品，请点击顶部“添加产品”。</td></tr>`;
+      $('productBody').innerHTML = `<tr><td class="empty-cell" colspan="${8 + pkg.discounts.length*2}">暂无产品，请点击顶部“添加产品”。</td></tr>`;
       bindProductEvents();
       return;
     }
@@ -342,7 +384,6 @@
       const q = qty(row);
       const p = price(row);
       const costSubtotal = mul(c, q);
-      const unitProfit = p - c;
       const listSubtotal = mul(p, q);
       const profitSubtotal = listSubtotal - costSubtotal;
       return `<tr>
@@ -355,10 +396,8 @@
         <td class="qty-col sticky s2"><input class="cell-input qty-input" data-id="${row.id}" value="${escapeHtml(row.qty)}" inputmode="decimal" /></td>
         <td class="money-col auto sticky s3"><div class="cell">${unitMoney(c)}</div></td>
         <td class="money-col auto sticky s4"><div class="cell">${money(costSubtotal)}</div></td>
-        <td class="money-col sticky s5"><input class="cell-input price-input" data-id="${row.id}" value="${escapeHtml(row.listPrice)}" inputmode="decimal" /></td>
-        <td class="money-col auto sticky s6"><div class="cell ${unitProfit>=0n?'pos':'neg'}">${money(unitProfit)}</div></td>
-        <td class="money-col auto sticky s7"><div class="cell">${money(listSubtotal)}</div></td>
-        <td class="profit-col auto sticky s8"><div class="cell ${profitSubtotal>=0n?'pos':'neg'}">${money(profitSubtotal)}</div></td>
+        <td class="money-col auto sticky s5"><div class="cell">${money(listSubtotal)}</div></td>
+        <td class="profit-col auto sticky s6"><div class="cell ${profitSubtotal>=0n?'pos':'neg'}">${money(profitSubtotal)}</div></td>
         ${pkg.discounts.map(d => {
           const factor = discountFactor(d);
           const discountedPrice = mul(p, factor);
@@ -398,12 +437,6 @@
       const row = currentPackage().products.find(r => r.id === el.dataset.id);
       if (!row) return;
       row.qty = el.value;
-      markDirty(); renderProducts(); renderFees(); renderSummary();
-    });
-    bindCommittedNumber('.price-input', el => {
-      const row = currentPackage().products.find(r => r.id === el.dataset.id);
-      if (!row) return;
-      row.listPrice = el.value;
       markDirty(); renderProducts(); renderFees(); renderSummary();
     });
     document.querySelectorAll('.delete-product').forEach(el => {
@@ -492,6 +525,22 @@
     });
   }
 
+  function quantityP(amount) {
+    return decimalString(amount, 2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1') + 'P';
+  }
+
+  function updatePricingMetrics() {
+    const pkg = currentPackage();
+    if (!pkg) return;
+    const basic = metrics(pkg, SCALE);
+    $('metricPackageName').textContent = pkg.name;
+    $('metricItemsCount').textContent = quantityP(basic.qty);
+    $('metricTotalSales').textContent = money(basic.sales);
+    $('metricProfit').textContent = money(basic.profit);
+    $('metricProfit').classList.toggle('neg', basic.profit < 0n);
+    $('metricProfit').classList.toggle('pos', basic.profit >= 0n);
+  }
+
   function renderSummary() {
     const pkg = currentPackage();
     const schemes = [
@@ -499,7 +548,7 @@
       ...pkg.discounts.map(d => ({label:`${d.zhe || '0'}折`, factor:discountFactor(d)}))
     ];
     const rows = [
-      ['商品总数量','qty',x=>decimalString(x,2),''],
+      ['商品总数量','qty',quantityP,''],
       ['销售总额','sales',money,''],
       ['商品成本','goods',money,''],
       ['固定附加成本','fixed',money,''],
@@ -512,7 +561,7 @@
     const values = schemes.map(s => metrics(pkg, s.factor));
 
     $('summaryHead').innerHTML = `<tr>
-      <th class="summary-label">指标</th>
+      <th class="summary-label">折扣方案</th>
       ${schemes.map((s,i)=>`<th class="summary-value ${i===0?'summary-original':'summary-discount'}">${escapeHtml(s.label)}</th>`).join('')}
     </tr>`;
 
@@ -525,6 +574,7 @@
           return `<td class="summary-value ${tone}">${formatter(val)}</td>`;
         }).join('')}
       </tr>`).join('');
+    updatePricingMetrics();
   }
 
   function componentOptions(combo, component) {
@@ -541,59 +591,87 @@
       }).join('');
   }
 
+  const expandedCombos = new Set();
+  let productFilterText = '';
+  let productFilterType = 'all';
+
   function renderCostItems() {
     if (!currentProject().costItems.length) {
-      $('costBody').innerHTML = `<tr><td class="empty-cell" colspan="8">暂无出厂价格产品，可添加普通产品，也可以创建由多个产品组成的组合。</td></tr>`;
+      $('searchCount').textContent='显示 0 / 0';
+      $('costBody').innerHTML = `<tr><td class="empty-cell" colspan="10">暂无产品信息，可添加普通产品，也可以创建由多个产品组成的组合。</td></tr>`;
       return;
     }
 
-    $('costBody').innerHTML = currentProject().costItems.map((item,index) => {
+    const allItems = currentProject().costItems;
+    const visibleItems=allItems.map((item,index)=>({item,index})).filter(({item}) => {
+      if (productFilterType !== 'all' && item.type !== productFilterType) return false;
+      if (!productFilterText) return true;
+      return `${item.name} ${item.spec || ''}`.toLowerCase().includes(productFilterText);
+    });
+    $('searchCount').textContent = `显示 ${visibleItems.length} / ${allItems.length}`;
+    if (!visibleItems.length) {
+      $('costBody').innerHTML = '<tr><td class="empty-cell" colspan="10">没有符合条件的产品，可调整搜索词或筛选条件。</td></tr>';
+      return;
+    }
+    $('costBody').innerHTML = visibleItems.map(({item,index}) => {
       const isCombo = item.type === 'combo';
       const components = Array.isArray(item.components) ? item.components : [];
-      const componentCell = isCombo ? `
-        <div class="component-stack">
-          ${components.map(component => `
-            <div class="component-line">
-              <select class="component-select" data-item="${item.id}" data-component="${component.id}">
-                <option value="">请选择成份</option>
-                ${componentOptions(item, component)}
-              </select>
-              <button class="component-remove" data-item="${item.id}" data-component="${component.id}" title="删除成份">×</button>
-            </div>`).join('')}
-          <button class="component-add add-component" data-item="${item.id}">＋ 添加成份</button>
-        </div>` : `<div class="cell center slash-cell">/</div>`;
-      const quantityCell = isCombo ? `
-        <div class="component-qty-stack">
-          ${components.map(component => `
-            <div class="component-line">
-              <input class="component-qty-input" data-item="${item.id}" data-component="${component.id}" value="${escapeHtml(component.qty)}" inputmode="decimal" />
-            </div>`).join('')}
-        </div>` : `<div class="cell center slash-cell">/</div>`;
+      const expanded = expandedCombos.has(item.id);
+      const compSummary = components.map(c => {
+        const ref=costItem(c.costItemId);
+        return `${ref ? ref.name : '待选择'} × ${c.qty}`;
+      }).join(' · ');
       const costCell = isCombo
         ? `<div class="cell combo-cost">${unitMoney(effectiveCostById(item.id))}</div>`
         : `<div class="inline-value"><span>¥</span><input class="cell-input cost-value-input" data-id="${item.id}" value="${escapeHtml(item.cost)}" inputmode="decimal" /></div>`;
-
-      return `<tr class="${isCombo?'cost-row-combo':''}">
-        <td class="rank"><div class="cell center">${index+1}</div></td>
+      const profit = nonNegative(item.listPrice) - effectiveCostById(item.id);
+      const summaryCell = isCombo ? `<span class="combo-summary" title="${escapeHtml(compSummary)}">${escapeHtml(compSummary || '尚未添加成份')}</span>` : '<span class="slash-cell">—</span>';
+      const memberCount = isCombo ? `${components.length} 项` : '—';
+      const componentCell = components.map(component => `
+        <div class="combo-component-row">
+          <select class="component-select" data-item="${item.id}" data-component="${component.id}">
+            <option value="">请选择成份</option>
+            ${componentOptions(item, component)}
+          </select>
+          <label class="combo-component-quantity">数量 <input class="component-qty-input" data-item="${item.id}" data-component="${component.id}" value="${escapeHtml(component.qty)}" inputmode="decimal" /></label>
+          <button class="component-remove" data-item="${item.id}" data-component="${component.id}" title="移除成份">×</button>
+        </div>`).join('');
+      const detail = isCombo && expanded ? `<tr class="combo-detail-row"><td colspan="10">
+        <div class="combo-detail-inner">
+          <div class="combo-detail-aside"><span class="combo-detail-caption">组合结构</span><strong>${escapeHtml(item.name)}</strong><span>引用产品成本自动汇总，不修改原有计算逻辑。</span></div>
+          <div class="combo-editor-list">${componentCell}<button class="component-add add-component" data-item="${item.id}">＋ 添加成份</button></div>
+        </div>
+      </td></tr>` : '';
+      return `<tr class="catalog-row ${isCombo ? 'catalog-combo-row' : ''}">
+        <td class="rank"><div class="cell center muted-rank">${index+1}</div></td>
         <td>
-          <div style="display:flex;align-items:center;height:35px">
+          <div class="catalog-name-row">
+            ${isCombo ? `<button class="combo-toggle ${expanded?'expanded':''}" data-item="${item.id}" aria-label="${expanded?'收起':'展开'}组合成份" aria-expanded="${expanded}">▸</button>` : '<span class="combo-toggle-spacer"></span>'}
             <input class="cell-input cost-name-input" data-id="${item.id}" value="${escapeHtml(item.name)}" />
             ${isCombo?'<span class="cost-kind">组合</span>':''}
           </div>
         </td>
-        <td>${componentCell}</td>
-        <td>${quantityCell}</td>
+        <td>${summaryCell}</td>
+        <td><div class="cell center small-muted">${memberCount}</div></td>
         <td><input class="cell-input cost-spec-input" data-id="${item.id}" value="${escapeHtml(item.spec)}" /></td>
         <td class="${isCombo?'auto':''}">${costCell}</td>
-        <td>
-          <select class="cell-select cost-active-select" data-id="${item.id}">
-            <option value="1" ${item.active?'selected':''}>启用</option>
-            <option value="0" ${!item.active?'selected':''}>停用</option>
-          </select>
-        </td>
+        <td><div class="inline-value"><span>¥</span><input class="cell-input cost-list-price-input" data-id="${item.id}" value="${escapeHtml(item.listPrice)}" inputmode="decimal" /></div></td>
+        <td class="auto"><div class="cell ${profit>=0n?'pos':'neg'}">${money(profit)}</div></td>
+        <td><select class="cell-select cost-active-select" data-id="${item.id}"><option value="1" ${item.active?'selected':''}>启用</option><option value="0" ${!item.active?'selected':''}>停用</option></select></td>
         <td class="compact-action"><div class="cell center"><button class="delete-icon delete-cost-item" data-id="${item.id}" title="删除">×</button></div></td>
-      </tr>`;
+      </tr>${detail}`;
     }).join('');
+    document.querySelectorAll('.combo-toggle').forEach(el => {
+      el.onclick = e => {
+        const id=e.currentTarget.dataset.item;
+        if(expandedCombos.has(id))expandedCombos.delete(id); else expandedCombos.add(id);
+        const scroller=el.closest('.table-scroll');
+        const savedTop=scroller?.scrollTop||0;
+        renderCostItems();
+        const updated=$('costBody').closest('.table-scroll');
+        if(updated)updated.scrollTop=savedTop;
+      };
+    });
 
     document.querySelectorAll('.cost-name-input').forEach(el => {
       el.oninput = e => {
@@ -616,6 +694,13 @@
       if (!item || item.type === 'combo') return;
       item.cost = el.value;
       markDirty(); renderCostItems(); renderProducts(); renderSummary();
+    });
+    bindCommittedNumber('.cost-list-price-input', el => {
+      const item = costItem(el.dataset.id);
+      if (!item) return;
+      if (!validDecimal(el.value)) { toast('请输入不小于 0 的有效售价'); renderCostItems(); return; }
+      item.listPrice = el.value;
+      markDirty(); renderCostItems(); renderProducts(); renderFees(); renderSummary();
     });
     document.querySelectorAll('.cost-active-select').forEach(el => {
       el.onchange = e => {
@@ -726,9 +811,15 @@
       .filter(row => row.some(cell => cell !== ''));
   }
 
+  function parseSingleColumn(text) {
+    const lines=String(text || '').replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+    while (lines.length && lines[lines.length-1] === '') lines.pop();
+    return lines.map(line => [line.trim()]);
+  }
+
   function isHeaderRow(row, type) {
     const joined = row.join('|');
-    if (type === 'products') return /产品品类|产品数量|单品标价/.test(joined);
+    if (type === 'products') return /产品品类|产品数量/.test(joined);
     if (type === 'fees') return /费用名称|计算方式|数值/.test(joined);
     return /产品品类|成份|单个成本|状态/.test(joined);
   }
@@ -756,10 +847,10 @@
     const project = currentProject();
     const pkg = currentPackage();
     if (type === 'products') {
-      const rows = [['产品品类','产品数量','单品标价']];
+      const rows = [['产品品类','产品数量']];
       pkg.products.forEach(row => {
         const item = costItem(row.costItemId);
-        rows.push([item ? batchCostLabel(item) : '', row.qty, row.listPrice]);
+        rows.push([item ? batchCostLabel(item) : '', row.qty]);
       });
       return rows.map(row => row.join('\t')).join('\n');
     }
@@ -769,15 +860,15 @@
       return rows.map(row => row.join('\t')).join('\n');
     }
 
-    const rows = [['产品品类','成份','成份数量','规格/备注','单个成本','状态']];
+    const rows = [['产品品类','成份','成份数量','规格/备注','单个成本','单品标价','状态']];
     project.costItems.forEach(item => {
       if (item.type !== 'combo') {
-        rows.push([item.name,'/','/',item.spec || '',item.cost || '0',item.active ? '启用' : '停用']);
+        rows.push([item.name,'/','/',item.spec || '',item.cost || '0',item.listPrice || '0',item.active ? '启用' : '停用']);
         return;
       }
       const components = item.components || [];
       if (!components.length) {
-        rows.push([item.name,'','','',decimalString(effectiveCostById(item.id),4),item.active ? '启用' : '停用']);
+        rows.push([item.name,'','',item.spec || '',decimalString(effectiveCostById(item.id),4),item.listPrice || '0',item.active ? '启用' : '停用']);
         return;
       }
       components.forEach((component,index) => {
@@ -788,6 +879,7 @@
           component.qty,
           index === 0 ? (item.spec || '') : '',
           index === 0 ? decimalString(effectiveCostById(item.id),4) : '',
+          index === 0 ? (item.listPrice || '0') : '',
           index === 0 ? (item.active ? '启用' : '停用') : ''
         ]);
       });
@@ -826,19 +918,19 @@
       const rowNumber = index + 1;
       let row = raw;
       if (/^\d+$/.test(row[0] || '') && row.length >= 4) row = row.slice(1);
-      const [label, quantity = '1', listPrice = '0'] = row;
+      if (row.length > 3) throw new Error(`第 ${rowNumber} 行：套餐产品只需要产品品类和数量（旧版第三列标价仍兼容）`);
+      const [label, quantity = '1', legacyPrice] = row;
       const item = findItemInProject(project, label);
       if (!item) throw new Error(`第 ${rowNumber} 行：找不到唯一的产品“${label}”，请检查名称或规格`);
       if (!item.active) throw new Error(`第 ${rowNumber} 行：产品“${label}”已停用`);
-      if (!validDecimal(quantity || '1', true)) throw new Error(`第 ${rowNumber} 行：产品数量必须是大于 0 的有效数字`);
-      if (!validDecimal(listPrice || '0')) throw new Error(`第 ${rowNumber} 行：单品标价不是有效数字`);
-      const existing = pkg.products.find(p => p.costItemId === item.id);
-      if (existing) {
-        existing.qty = quantity || '1';
-        existing.listPrice = listPrice || '0';
-      } else {
-        pkg.products.push({id:uid('row'),costItemId:item.id,qty:quantity || '1',listPrice:listPrice || '0'});
+      if (!validDecimal(quantity || '1', true)) throw new Error(`第 ${rowNumber} 行：产品数量必须大于 0`);
+      if (legacyPrice !== undefined && legacyPrice !== '') {
+        if (!validDecimal(legacyPrice)) throw new Error(`第 ${rowNumber} 行：单品标价不是有效数字`);
+        item.listPrice = legacyPrice;
       }
+      const existing = pkg.products.find(p => p.costItemId === item.id);
+      if (existing) existing.qty = quantity || '1';
+      else pkg.products.push({id:uid('row'),costItemId:item.id,qty:quantity || '1'});
       applied++;
     });
     return applied;
@@ -864,20 +956,26 @@
   function parseCostColumns(raw, index) {
     let row = [...raw];
     if (/^\d+$/.test(row[0] || '') && row.length >= 7) row = row.slice(1);
-    // Simple source: 产品名称 / 单个成本 / 规格 / 状态
-    if (row.length >= 2 && row.length <= 4 && validDecimal(row[1] || '')) {
+    // Short table: Name / Cost / [List Price] / [Spec] / [Status]
+    // Old short table: Name / Cost / [Spec] / [Status]
+    if (row.length >= 2 && row.length <= 5 && validDecimal(row[1] || '')) {
+      const hasPrice = row.length >= 3 && validDecimal(row[2] || '');
       return {
-        name:row[0] || '', ingredient:'', qty:'', spec:row[2] || '',
-        price:row[1], status:row[3] || '启用', rowNumber:index + 1
+        name:row[0] || '',ingredient:'',qty:'',
+        spec:hasPrice ? (row[3] || '') : (row[2] || ''),
+        price:row[1],listPrice:hasPrice ? row[2] : '0',
+        status:hasPrice ? (row[4] || '启用') : (row[3] || '启用'),
+        rowNumber:index+1
       };
     }
-    if (row.length < 5) {
-      throw new Error(`第 ${index + 1} 行：出厂价格请粘贴 2~4 列简表，或 6 列原表格式`);
-    }
-    while (row.length < 6) row.push('');
+    if (row.length < 6) throw new Error(`第 ${index+1} 行：产品信息请粘贴含售价的 7 列完整表，或旧版 6 列/简表`);
+    if (row.length > 7) throw new Error(`第 ${index+1} 行：产品信息列数过多`);
+    const isNew = row.length === 7;
     return {
       name:row[0] || '',ingredient:row[1] || '',qty:row[2] || '',
-      spec:row[3] || '',price:row[4] || '',status:row[5] || '启用',rowNumber:index+1
+      spec:row[3] || '',price:row[4] || '',
+      listPrice:isNew ? (row[5] || '') : '0',
+      status:isNew ? (row[6] || '启用') : (row[5] || '启用'),rowNumber:index+1
     };
   }
 
@@ -906,16 +1004,21 @@
       if (hasIngredient) {
         if (!validDecimal(entry.qty || '1', true)) throw new Error(`第 ${entry.rowNumber} 行：成份数量必须大于 0`);
         const combo = {
-          id:uid('cost'),type:'combo',name,spec,cost:'0',active:enabled,components:[],
+          id:uid('cost'),type:'combo',name,spec,cost:'0',listPrice:'0',active:enabled,components:[],
           pendingSpecs:[{label:ingredient,qty:entry.qty || '1',rowNumber:entry.rowNumber}]
         };
+        const listPrice = entry.listPrice || '0';
+        if (!validDecimal(listPrice)) throw new Error(`第 ${entry.rowNumber} 行：单品标价不是有效数字`);
+        combo.listPrice = listPrice;
         project.costItems.push(combo);
         pendingCombos.push(combo);
         activeCombo=combo;
       } else {
         const cost = entry.price || '0';
         if (!validDecimal(cost)) throw new Error(`第 ${entry.rowNumber} 行：单个成本不是有效数字`);
-        project.costItems.push({id:uid('cost'),type:'product',name,spec,cost,active:enabled,components:[]});
+        const listPrice = entry.listPrice || '0';
+        if (!validDecimal(listPrice)) throw new Error(`第 ${entry.rowNumber} 行：单品标价不是有效数字`);
+        project.costItems.push({id:uid('cost'),type:'product',name,spec,cost,listPrice,active:enabled,components:[]});
       }
       applied++;
     });
@@ -944,14 +1047,121 @@
     return applied;
   }
 
+  const batchColumns = {
+    products: [{id:'product',label:'产品品类'}, {id:'qty',label:'产品数量'}],
+    fees: [{id:'name',label:'费用名称'}, {id:'value',label:'费用数值'}, {id:'type',label:'计算方式'}],
+    cost: [
+      {id:'name',label:'产品品类'}, {id:'spec',label:'规格 / 备注'},
+      {id:'cost',label:'单个成本'}, {id:'listPrice',label:'单品标价'},
+      {id:'status',label:'状态'}
+    ]
+  };
+
+  function applySingleColumn(project, type, field, values, startIndex=0) {
+    if (!batchColumns[type]?.some(c=>c.id===field)) throw new Error('不支持的单列字段');
+    const items = type==='cost' ? project.costItems : type==='fees'
+      ? project.packages.find(p=>p.id===project.currentPackageId).fees
+      : project.packages.find(p=>p.id===project.currentPackageId).products;
+    if (!Array.isArray(items)) throw new Error('目标列表不存在');
+    for (let n=0;n<values.length;n++) {
+      const i=startIndex+n, val=String(values[n] ?? '').trim();
+      const rowNo=i+1;
+      if (type==='cost') {
+        // Append new blank products only when pasting into an expandable product column.
+        if (!items[i]) items.push({id:uid('cost'),type:'product',name:`新产品${rowNo}`,
+          spec:'',cost:'0',listPrice:'0',active:true,components:[]});
+        const item=items[i];
+        if (field==='cost' && item.type==='combo') throw new Error(`第 ${rowNo} 行：组合成本自动计算，无法粘贴覆盖`);
+        if (field==='cost' || field==='listPrice') {
+          if (!validDecimal(val)) throw new Error(`第 ${rowNo} 行：请输入不小于 0 的有效数字`);
+          item[field]=val;
+        } else if (field==='status') item.active=validateStatus(val,rowNo);
+        else if (field==='name') {
+          if (!val) throw new Error(`第 ${rowNo} 行：产品名称不能为空`);
+          item.name=val;
+        } else item.spec=val;
+      } else if(type==='products') {
+        const pkg=project.packages.find(p=>p.id===project.currentPackageId);
+        if (field==='product') {
+          const match=findItemInProject(project,val);
+          if (!match || !match.active) throw new Error(`第 ${rowNo} 行：未找到唯一的启用产品“${val}”`);
+          if (pkg.products.some((r,k)=>k!==i && r.costItemId===match.id))
+            throw new Error(`第 ${rowNo} 行：套餐内重复产品“${val}”`);
+          if (!items[i]) items.push({id:uid('row'),costItemId:match.id,qty:'1'});
+          else items[i].costItemId=match.id;
+        } else {
+          if (!items[i]) throw new Error(`第 ${rowNo} 行：没有产品行，请先添加产品或粘贴产品品类`);
+          if (!validDecimal(val,true)) throw new Error(`第 ${rowNo} 行：产品数量必须大于 0`);
+          items[i].qty=val;
+        }
+      } else {
+        if (!items[i] && field!=='name') throw new Error(`第 ${rowNo} 行：没有费用行，请先添加费用`);
+        if (!items[i]) items.push({id:uid('fee'),name:val,type:'fixed',value:'0'});
+        if (field==='name') {
+          if (!val) throw new Error(`第 ${rowNo} 行：费用名称不能为空`);
+          items[i].name=val;
+        } else if (field==='type') {
+          const normalized=val.toLowerCase();
+          if (normalized==='固定金额'||normalized==='fixed') items[i].type='fixed';
+          else if (['售价百分比','成交价比例','percent','percentage'].includes(normalized)) items[i].type='percent';
+          else throw new Error(`第 ${rowNo} 行：不支持的计算方式“${val}”`);
+        } else {
+          if (!validDecimal(val)) throw new Error(`第 ${rowNo} 行：费用数值无效`);
+          items[i].value=val;
+        }
+      }
+    }
+    if (type==='cost' && (field==='name' || field==='spec')) {
+      const ids=new Set();
+      for (const item of items) {
+        const key=batchCostLabel(item);
+        if (ids.has(key)) throw new Error(`产品品类/规格重复：“${key}”`);
+        ids.add(key);
+      }
+    }
+    return values.length;
+  }
+
+  function serializeSingleColumn(type, field) {
+    const pkg=currentPackage();
+    const items=type==='cost'?currentProject().costItems:type==='fees'?pkg.fees:pkg.products;
+    const options=batchColumns[type];
+    const label=options.find(o=>o.id===field)?.label || '内容';
+    const data=items.map(item=>{
+      if (type==='cost') {
+        if (field==='cost') return item.type==='combo'?decimalString(effectiveCostById(item.id),4):item.cost;
+        if (field==='status') return item.active?'启用':'停用';
+        return String(item[field]??'');
+      }
+      if (type==='fees') return field==='type'?(item.type==='percent'?'售价百分比':'固定金额'):String(item[field]??'');
+      return field==='product'?batchCostLabel(costItem(item.costItemId) || {name:''}):String(item.qty??'');
+    });
+    return [label,...data].join('\n');
+  }
+
+  function renderBatchColumns() {
+    const type=$('batchType').value;
+    const select=$('batchColumn');
+    const previous=select.value;
+    select.innerHTML=batchColumns[type].map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+    if (batchColumns[type].some(c=>c.id===previous)) select.value=previous;
+    $('batchColumnWrap').hidden=$('batchMode').value!=='column';
+  }
+
   function updateBatchHint() {
-    const type = $('batchType').value;
-    const hints = {
-      products: '列顺序：产品品类 ｜ 产品数量 ｜ 单品标价。产品名称需与当前项目的出厂价格设置一致。',
-      fees: '列顺序：费用名称 ｜ 计算方式 ｜ 数值。计算方式支持“固定金额”或“售价百分比”。',
-      cost: '支持简表：产品名称 ｜ 单个成本 ｜ 规格/备注 ｜ 状态；或完整表：产品品类 ｜ 成份 ｜ 成份数量 ｜ 规格/备注 ｜ 单个成本 ｜ 状态。组合后续成份可使用空名称续行。'
+    renderBatchColumns();
+    const type=$('batchType').value;
+    const mode=$('batchMode').value;
+    if (mode==='column') {
+      $('batchHint').textContent='仅粘贴一列，按当前列表从第 1 行向下批量填入；在实际表格输入框 Ctrl+V 可从该行开始填写。整个批次先校验，失败不改动数据。';
+      return;
+    }
+    const hints={
+      products:'列顺序：产品品类 ｜ 产品数量（兼容旧版第三列售价，自动写回产品信息设置）。产品名称需与当前项目的产品信息设置一致。',
+      fees:'列顺序：费用名称 ｜ 计算方式 ｜ 数值。计算方式支持“固定金额”或“售价百分比”。',
+      cost:'支持简表：产品名称 ｜ 单个成本 ｜ 单品标价 ｜ 规格/备注 ｜ 状态；或完整表：产品品类 ｜ 成份 ｜ 成份数量 ｜ 规格/备注 ｜ 单个成本 ｜ 单品标价 ｜ 状态。兼容旧版缺少单品标价的表。'
     };
-    $('batchHint').textContent = hints[type];
+    $('batchHint').textContent=hints[type];
   }
 
   function showBatchError(message) {
@@ -962,6 +1172,7 @@
   function openBatchModal(type) {
     $('batchType').value = type;
     $('batchText').value = '';
+    $('batchMode').value='table';
     $('batchError').hidden=true;
     updateBatchHint();
     $('batchModal').hidden = false;
@@ -1013,7 +1224,30 @@
     renderSummary();
     renderCostItems();
     updateSaveState();
+    renderV8Context();
     enableVerticalScrollHandoff();
+  }
+
+  function renderV8Context() {
+    const project=currentProject();
+    const pkg=currentPackage();
+    const all=project.costItems;
+    $('sidebarProjectName').textContent=project.name;
+    $('statProductCount').textContent=all.length;
+    $('statComboCount').textContent=all.filter(i=>i.type==='combo').length;
+    $('statActiveCount').textContent=all.filter(i=>i.active).length;
+    updatePricingMetrics();
+  }
+  function selectV8View(next) {
+    const pricing = next==='pricing';
+    document.querySelectorAll('.mobile-view-tab').forEach(x=>x.classList.toggle('active',x.dataset.view===next));
+    document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.nav===next));
+    $('pricingView').classList.toggle('active', pricing);
+    $('costView').classList.toggle('active', !pricing);
+    $('viewTitle').textContent=pricing?'套餐售价计算':'产品信息设置';
+    $('breadcrumbCurrent').textContent=pricing?'售价计算':'产品管理';
+    $('viewSubtitle').textContent=pricing?'选择套餐，对比成本、折扣与最终利润。':'维护产品、组合与基础定价，成本变化自动传递到套餐。';
+    window.scrollTo({top:0,behavior:'instant'});
   }
 
   $('projectSelect').onchange = e => {
@@ -1061,7 +1295,7 @@
   };
 
   $('addCostItemBtn').onclick = () => {
-    currentProject().costItems.push({id:uid('cost'),type:'product',name:'新产品',spec:'',cost:'0',active:true,components:[]});
+    currentProject().costItems.push({id:uid('cost'),type:'product',name:'新产品',spec:'',cost:'0',listPrice:'0',active:true,components:[]});
     markDirty(); renderAll();
   };
 
@@ -1073,6 +1307,7 @@
       name:'新组合',
       spec:'',
       cost:'0',
+      listPrice:'0',
       active:true,
       components:first ? [{id:uid('cmp'),costItemId:first.id,qty:'1'}] : []
     });
@@ -1084,10 +1319,10 @@
     const selected = new Set(pkg.products.map(r => r.costItemId));
     const first = currentProject().costItems.find(item => item.active && !selected.has(item.id));
     if (!first) {
-      toast(currentProject().costItems.length ? '没有可继续添加的启用产品' : '请先在出厂价格设置中添加产品');
+      toast(currentProject().costItems.length ? '没有可继续添加的启用产品' : '请先在产品信息设置中添加产品');
       return;
     }
-    pkg.products.push({id:uid('row'),costItemId:first.id,qty:'1',listPrice:'0'});
+    pkg.products.push({id:uid('row'),costItemId:first.id,qty:'1'});
     markDirty(); renderAll();
     requestAnimationFrame(()=> $('productScroll').scrollTop = $('productScroll').scrollHeight);
   };
@@ -1150,17 +1385,52 @@
   };
 
   document.addEventListener('paste', event => {
-    const target = event.target;
+    const target=event.target;
     if (!(target instanceof HTMLInputElement)) return;
-    const text = event.clipboardData?.getData('text/plain') || '';
+    const text=event.clipboardData?.getData('text/plain') || '';
     if (!/[\t\r\n]/.test(text)) return;
-    const section = target.closest('#costView') ? 'cost'
-      : target.closest('.fees-block') ? 'fees'
-      : target.closest('.products-block') ? 'products' : null;
+    const section=target.closest('#costView')?'cost'
+      :target.closest('.fees-block')?'fees'
+      :target.closest('.products-block')?'products':null;
     if (!section) return;
     event.preventDefault();
-    openBatchModal(section);
-    $('batchText').value=text;
+    // Multi-column TSV still opens the original preview + apply dialog.
+    if (text.includes('\t')) {
+      openBatchModal(section);
+      $('batchText').value=text;
+      return;
+    }
+    const cls={
+      'cost-name-input':'name','cost-spec-input':'spec','cost-value-input':'cost',
+      'cost-list-price-input':'listPrice','qty-input':'qty',
+      'fee-name-input':'name','fee-value-input':'value'
+    };
+    const matched=Object.entries(cls).find(([key])=>target.classList.contains(key));
+    if (!matched) { openBatchModal(section);$('batchText').value=text;return; }
+    let rows=parseSingleColumn(text);
+    if (!rows.length) return;
+    const field=matched[1];
+    const expected=batchColumns[section]?.find(c=>c.id===field)?.label;
+    if (expected && rows[0]?.[0]===expected) rows=rows.slice(1);
+    if (!rows.length) return;
+    const project=clone(currentProject());
+    const pkg=project.packages.find(p=>p.id===project.currentPackageId);
+    const entries=section==='cost'?project.costItems:section==='fees'?pkg.fees:pkg.products;
+    const start=entries.findIndex(r=>r.id===target.dataset.id);
+    if(start<0) return;
+    try {
+      const count=applySingleColumn(project,section,field,rows.map(row=>row[0]),start);
+      const idx=state.projects.findIndex(p=>p.id===project.id);
+      state.projects[idx]=project;
+      markDirty();renderAll();toast(`已粘贴 ${count} 行，请保存`);
+    } catch(err) {
+      openBatchModal(section);
+      $('batchMode').value='column';
+      updateBatchHint();
+      $('batchColumn').value=field;
+      $('batchText').value=text;
+      showBatchError(`${err.message}（本次粘贴未应用任何行）`);
+    }
   });
 
   $('batchPricingBtn').onclick = () => openBatchModal('products');
@@ -1168,34 +1438,43 @@
   $('closeBatchBtn').onclick = closeBatchModal;
   $('cancelBatchBtn').onclick = closeBatchModal;
   $('batchType').onchange = () => { $('batchError').hidden=true;updateBatchHint(); };
+  $('batchMode').onchange = () => { $('batchError').hidden=true;updateBatchHint(); };
+  $('batchColumn').onchange = () => { $('batchError').hidden=true; };
   $('batchText').oninput = () => { $('batchError').hidden=true; };
   document.addEventListener('keydown', event => {
     if (event.key==='Escape' && !$('batchModal').hidden) closeBatchModal();
   });
   $('batchModal').onclick = e => { if (e.target === $('batchModal')) closeBatchModal(); };
   $('copyBatchBtn').onclick = async () => {
-    const text = serializeBatch($('batchType').value);
+    const text = $('batchMode').value === 'column'
+      ? serializeSingleColumn($('batchType').value,$('batchColumn').value)
+      : serializeBatch($('batchType').value);
     $('batchText').value = text;
     const ok = await copyText(text);
     toast(ok ? '当前数据已复制' : '已生成多行数据，请手动复制');
   };
   $('applyBatchBtn').onclick = () => {
-    const type = $('batchType').value;
-    let rows = parseTsv($('batchText').value);
-    if (!rows.length) { showBatchError('请先粘贴多行数据'); return; }
-    if (isHeaderRow(rows[0],type)) rows=rows.slice(1);
+    const type=$('batchType').value, mode=$('batchMode').value;
+    let rows=mode==='column' ? parseSingleColumn($('batchText').value) : parseTsv($('batchText').value);
+    if (!rows.length) { showBatchError('请先粘贴数据'); return; }
+    if (mode==='column') {
+      if (rows.some(r=>r.length!==1)) { showBatchError('单列模式只能粘贴一列，请切换到整表多列模式'); return; }
+      const header=batchColumns[type].find(c=>c.id===$('batchColumn').value)?.label;
+      if (rows[0]?.[0]===header) rows=rows.slice(1);
+    } else if (isHeaderRow(rows[0],type)) rows=rows.slice(1);
     if (!rows.length) { showBatchError('表头下没有数据行'); return; }
     try {
-      const project = clone(currentProject());
-      const applied = type === 'products' ? applyBatchProducts(rows,project)
-        : type === 'fees' ? applyBatchFees(rows,project) : applyBatchCost(rows,project);
-      const idx=state.projects.findIndex(p => p.id===project.id);
-      if (idx < 0) throw new Error('当前项目不存在');
+      const project=clone(currentProject());
+      const applied=mode==='column'
+        ? applySingleColumn(project,type,$('batchColumn').value,rows.map(r=>r[0]))
+        :type==='products'?applyBatchProducts(rows,project)
+        :type==='fees'?applyBatchFees(rows,project):applyBatchCost(rows,project);
+      const idx=state.projects.findIndex(p=>p.id===project.id);
+      if(idx<0) throw new Error('当前项目不存在');
       state.projects[idx]=project;
-      markDirty();renderAll();closeBatchModal();
-      toast(`已应用 ${applied} 行，请点击保存`);
-    } catch (err) {
-      showBatchError(err instanceof Error ? err.message : '数据解析失败');
+      markDirty();renderAll();closeBatchModal();toast(`已应用 ${applied} 行，请保存`);
+    } catch(err) {
+      showBatchError(err instanceof Error?err.message:'数据解析失败');
     }
   };
 
@@ -1239,14 +1518,27 @@
     }
   };
 
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.onclick = () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      tab.classList.add('active');
-      const pricing = tab.dataset.view === 'pricing';
-      $('pricingView').classList.toggle('active', pricing);
-      $('costView').classList.toggle('active', !pricing);
-    };
+  document.querySelectorAll('.mobile-view-tab').forEach(tab=>{
+    tab.onclick=()=>selectV8View(tab.dataset.view);
+  });
+  document.querySelectorAll('.nav-item').forEach(btn=>{
+    btn.onclick=()=>selectV8View(btn.dataset.nav);
+  });
+  $('productSearch').oninput=e=>{
+    productFilterText=e.currentTarget.value.toLowerCase().trim();
+    renderCostItems();
+  };
+  $('productFilter').onchange=e=>{
+    productFilterType=e.currentTarget.value;
+    renderCostItems();
+  };
+  $('sidebarCollapse').onclick=()=>{
+    document.documentElement.classList.toggle('sidebar-manual-collapse');
+  };
+  document.addEventListener('click',e=>{
+    for(const el of document.querySelectorAll('.dropdown[open]')){
+      if(!el.contains(e.target))el.removeAttribute('open');
+    }
   });
 
   window.addEventListener('beforeunload', e => {
@@ -1256,4 +1548,5 @@
   });
 
   renderAll();
+  selectV8View('cost');
 })();
