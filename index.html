@@ -1,204 +1,230 @@
-<!doctype html>
+<!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Dopamine 套餐售价、成本、折扣与利润计算工具" />
-  <title>Dopamine · 售价计算</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="Dopamine 套餐售价、成本、折扣与利润计算工具" name="description"/>
+<title>Dopamine · 售价计算</title>
+<link href="./styles.css" rel="stylesheet"/>
+<link href="./v8.css" rel="stylesheet"/></head>
 <body>
-  <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark">D</div>
-        <div>
-          <div class="brand-title">Dopamine</div>
-          <div class="brand-subtitle">售价计算</div>
-        </div>
-      </div>
-      <div class="top-actions">
-        <span id="saveState" class="save-state"></span>
-        <button class="btn ghost" id="backupBtn">导出备份</button>
-        <button class="btn ghost" id="restoreBtn">恢复备份</button>
-        <input id="restoreInput" type="file" accept=".json,application/json" hidden />
-        <button class="btn" id="resetBtn">取消修改</button>
-        <button class="btn primary" id="saveBtn">保存</button>
-      </div>
-    </header>
+<div class="shell"><aside class="sidebar" id="sidebar">
+<div class="sidebar-head">
+<div class="sidebar-logo">D</div>
+<div class="sidebar-brand-copy"><strong>Dopamine</strong><span>Business workspace</span></div>
+<button aria-label="收起或展开导航" class="sidebar-collapse" id="sidebarCollapse"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><rect height="18" rx="2" width="18" x="3" y="3"></rect><path d="M9 3v18"></path></svg></button>
+</div>
+<div class="sidebar-project"><span class="sidebar-eyebrow">当前工作空间</span>
+<div class="sidebar-project-title"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3V7Z"></path></svg><span id="sidebarProjectName">复古红系列</span></div>
+<div class="sidebar-project-description">独立项目 · 本地工作区</div>
+</div>
+<nav aria-label="主要功能" class="sidebar-nav">
+<div class="sidebar-group-label">经营工具</div>
+<button class="nav-item active" data-nav="cost" type="button"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z"></path><path d="M4 7.5V16l8 5 8-5V7.5"></path><path d="M12 12v9"></path></svg><span>产品信息设置</span></button>
+<button class="nav-item" data-nav="pricing" type="button"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><rect height="20" rx="2" width="16" x="4" y="2"></rect><path d="M8 6h8M8 11h2m4 0h2m-8 5h2m4 0h2"></path></svg><span>套餐售价计算</span></button>
+<div class="sidebar-group-label sidebar-next">未来扩展</div>
+<div class="nav-future"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><path d="M3 3v18h18"></path><path d="m7 16 4-5 4 3 5-7"></path></svg><span>采购成本优化</span></div>
+<div class="nav-future"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><path d="M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01"></path></svg><span>记账与报表</span></div>
+</nav>
+<div class="sidebar-bottom">
+<div class="storage-dot"></div><div class="sidebar-bottom-copy"><strong>本地数据模式</strong><span>数据仅保存在当前浏览器</span></div>
+</div>
+</aside><div class="workspace"><div class="app">
+<header class="topbar">
+<div class="topbar-brand">
+<div class="brand-mark">D</div>
+<div>
+<div class="brand-title">Dopamine</div>
+<div class="brand-subtitle">套装经营 · V8 UI Preview</div>
+</div>
+</div><div class="project-controls header-project-controls">
+<span class="project-label">项目</span>
+<select class="project-select" id="projectSelect"></select>
 
-    <main class="content">
-      <div class="page-head">
-        <div class="title-row">
-          <h1>售价计算</h1>
-          <div class="project-controls">
-            <span class="project-label">项目</span>
-            <select id="projectSelect" class="project-select"></select>
-            <button class="mini-btn" id="newProjectBtn">＋ 项目</button>
-            <button class="mini-btn" id="copyProjectBtn">复制</button>
-            <button class="mini-btn" id="renameProjectBtn">重命名</button>
-            <button class="mini-btn danger-text" id="deleteProjectBtn">删除</button>
-          </div>
-          <div class="tabs">
-            <button class="tab" data-view="cost">产品信息设置</button>
-            <button class="tab active" data-view="pricing">套餐售价计算</button>
-          </div>
-        </div>
-        <div class="legend">白色单元格可编辑 · 浅灰蓝单元格自动计算</div>
-      </div>
 
-      <section id="pricingView" class="view active">
-        <div class="toolbar">
-          <div class="toolbar-left">
-            <label class="inline-field">
-              <span>套餐</span>
-              <select id="packageSelect" class="package-select"></select>
-            </label>
-            <button class="btn" id="newPackageBtn">＋ 新建套餐</button>
-            <button class="btn" id="copyPackageBtn">复制套餐</button>
-            <button class="btn" id="renamePackageBtn">重命名</button>
-            <button class="btn danger-light" id="deletePackageBtn">删除套餐</button>
-          </div>
-          <div class="toolbar-right">
-            <button class="btn" id="batchPricingBtn">批量复制 / 粘贴</button>
-            <button class="btn" id="addProductBtn">＋ 添加产品</button>
-            <button class="btn" id="addFeeBtn">＋ 添加费用</button>
-            <button class="btn" id="addDiscountBtn">＋ 添加折扣方案</button>
-          </div>
-        </div>
 
-        <div class="worksheet">
-          <section class="block products-block">
-            <div class="block-head">
-              <div class="block-title"><span class="step">1</span>产品售价与成本计算区</div>
-              <div class="block-note">选择产品并填写数量；标价与成本从产品信息设置自动引用</div>
-            </div>
-            <div class="table-scroll" id="productScroll">
-              <table id="productTable">
-                <thead id="productHead"></thead>
-                <tbody id="productBody"></tbody>
-              </table>
-            </div>
-          </section>
 
-          <section class="block fees-block">
-            <div class="block-head">
-              <div class="block-title"><span class="step">2</span>附加成本计算区</div>
-              <div class="block-note">包装、人工、运费、平台费等；固定金额 / 售价百分比</div>
-            </div>
-            <div class="table-scroll">
-              <table class="fee-table">
-                <thead>
-                  <tr>
-                    <th class="fee-name">费用名称</th>
-                    <th class="fee-type">计算方式</th>
-                    <th class="fee-value">数值</th>
-                    <th class="fee-result">原价方案费用</th>
-                    <th class="compact-action">操作</th>
-                  </tr>
-                </thead>
-                <tbody id="feeBody"></tbody>
-              </table>
-            </div>
-          </section>
+<details class="dropdown" id="projectMenu"><summary class="icon-action" title="管理项目"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg></summary><div class="dropdown-menu"><div class="dropdown-title">项目管理</div><button class="menu-action" id="newProjectBtn">＋ 项目</button><button class="menu-action" id="copyProjectBtn">复制</button><button class="menu-action" id="renameProjectBtn">重命名</button><button class="menu-action menu-danger" id="deleteProjectBtn">删除</button></div></details></div>
+<div class="mobile-view-nav" aria-label="小屏页面切换">
+<button class="mobile-view-tab" data-view="cost" type="button">产品信息</button>
+<button class="mobile-view-tab" data-view="pricing" type="button">套餐计算</button>
+</div><div class="top-actions">
+<span class="save-state" id="saveState"></span><details class="dropdown" id="dataMenu"><summary class="btn data-menu-btn">数据管理 <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><path d="m9 18 6-6-6-6"></path></svg></summary><div class="dropdown-menu"><div class="dropdown-title">备份与恢复</div><button class="menu-action" id="backupBtn">导出备份</button><button class="menu-action" id="restoreBtn">恢复备份</button></div></details><input accept=".json,application/json" hidden="" id="restoreInput" type="file"/>
 
-          <section class="block summary-block">
-            <div class="block-head">
-              <div class="block-title"><span class="step">3</span>合计结果区</div>
-              <div class="block-note">原价与多个折扣方案横向对比</div>
-            </div>
-            <div class="summary-scroll">
-              <table class="summary-table">
-                <thead id="summaryHead"></thead>
-                <tbody id="summaryBody"></tbody>
-              </table>
-            </div>
-            <div class="summary-note">商品利润小计只扣商品成本；最终套餐利润会继续扣除附加成本。</div>
-          </section>
-        </div>
-      </section>
 
-      <section id="costView" class="view">
-        <div class="toolbar">
-          <div>
-            <strong>产品信息设置</strong>
-            <span class="toolbar-help">统一维护产品与组合的单个成本和单品标价，套餐自动计算利润。</span>
-          </div>
-          <div class="toolbar-left">
-            <button class="btn" id="batchCostBtn">批量复制 / 粘贴</button>
-            <button class="btn" id="addCostItemBtn">＋ 添加产品</button>
-            <button class="btn primary" id="addComboItemBtn">＋ 添加组合</button>
-          </div>
-        </div>
-        <section class="block cost-manager">
-          <div class="table-scroll">
-            <table class="cost-table">
-              <thead>
-                <tr>
-                  <th class="rank">排序</th>
-                  <th class="cost-name">产品品类</th>
-                  <th class="cost-components">成份</th>
-                  <th class="cost-component-qty">成份数量</th>
-                  <th class="cost-spec">规格 / 备注</th>
-                  <th class="cost-value">单个成本</th>
-                  <th class="cost-list-price">单品标价</th>
-                  <th class="cost-profit">单品利润</th>
-                  <th class="cost-status">状态</th>
-                  <th class="compact-action">操作</th>
-                </tr>
-              </thead>
-              <tbody id="costBody"></tbody>
-            </table>
-          </div>
-        </section>
-      </section>
-    </main>
-  </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<button class="btn" id="resetBtn">取消修改</button>
+<button class="btn primary" id="saveBtn">保存</button>
+</div>
+</header>
+<main class="content">
+<div class="page-head"><div class="page-top-marker"><span class="preview-dot"></span> 本地经营工作台</div>
+<div class="title-row">
+<div class="page-kicker">工作台 <span class="slash">/</span> <span id="breadcrumbCurrent">产品管理</span></div><h1 id="viewTitle">产品信息设置</h1><p class="page-subtitle" id="viewSubtitle">维护产品、组合与基础定价，成本变化自动传递到套餐。</p>
 
-  <div id="batchModal" class="modal-backdrop" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="batchTitle">
-      <div class="modal-head">
-        <div>
-          <div id="batchTitle" class="modal-title">批量复制 / 粘贴</div>
-          <div id="batchHint" class="modal-hint"></div>
-        </div>
-        <button id="closeBatchBtn" class="modal-close" aria-label="关闭">×</button>
-      </div>
-      <div class="modal-body">
-        <label class="batch-type-row">数据类型
+
+</div>
+
+</div>
+<section class="view active" id="pricingView">
+<div class="toolbar">
+<div class="toolbar-left">
+<label class="inline-field">
+<span>套餐</span>
+<select class="package-select" id="packageSelect"></select>
+</label>
+<button class="btn" id="newPackageBtn">＋ 新建套餐</button>
+
+
+
+<details class="dropdown" id="packageMenu"><summary class="btn package-menu-trigger">套餐操作 <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><path d="m9 18 6-6-6-6"></path></svg></summary><div class="dropdown-menu"><div class="dropdown-title">套餐管理</div><button class="menu-action" id="copyPackageBtn">复制套餐</button><button class="menu-action" id="renamePackageBtn">重命名</button><button class="menu-action menu-danger" id="deletePackageBtn">删除套餐</button></div></details></div>
+<div class="toolbar-right pricing-actions">
+<button class="btn" id="batchPricingBtn">批量复制 / 粘贴</button>
+<button class="btn" id="addProductBtn">＋ 添加产品</button>
+<button class="btn" id="addFeeBtn">＋ 添加费用</button>
+<button class="btn" id="addDiscountBtn">＋ 添加折扣方案</button>
+</div>
+<div class="pricing-strip">
+<div class="pricing-strip-item"><span>当前套餐</span><strong id="metricPackageName">大食量</strong></div>
+<div class="pricing-strip-item"><span>商品数量</span><strong id="metricItemsCount">0</strong></div>
+<div class="pricing-strip-item"><span>原价总额</span><strong id="metricTotalSales">¥0.00</strong></div>
+<div class="pricing-strip-item featured"><span>原价套餐利润</span><strong id="metricProfit">¥0.00</strong></div>
+</div></div><div class="worksheet">
+<section class="block products-block">
+<div class="block-head">
+<div class="block-title"><span class="step">1</span>产品售价与成本</div>
+<div class="block-note">选择产品并填写数量；标价与成本从产品信息设置自动引用</div>
+</div>
+<div class="table-scroll" id="productScroll">
+<table id="productTable">
+<thead id="productHead"></thead>
+<tbody id="productBody"></tbody>
+</table>
+</div>
+</section>
+<section class="block fees-block">
+<div class="block-head">
+<div class="block-title"><span class="step">2</span>套餐附加成本</div>
+<div class="block-note">包装、人工、运费、平台费等；固定金额 / 售价百分比</div>
+</div>
+<div class="table-scroll">
+<table class="fee-table">
+<thead>
+<tr>
+<th class="fee-name">费用名称</th>
+<th class="fee-type">计算方式</th>
+<th class="fee-value">数值</th>
+<th class="fee-result">原价方案费用</th>
+<th class="compact-action">操作</th>
+</tr>
+</thead>
+<tbody id="feeBody"></tbody>
+</table>
+</div>
+</section>
+<section class="block summary-block">
+<div class="block-head">
+<div class="block-title"><span class="step">3</span>折扣与利润对比</div>
+<div class="block-note">原价与多个折扣方案横向对比</div>
+</div>
+<div class="summary-scroll">
+<table class="summary-table">
+<thead id="summaryHead"></thead>
+<tbody id="summaryBody"></tbody>
+</table>
+</div>
+<div class="summary-note">商品利润小计只扣商品成本；最终套餐利润会继续扣除附加成本。</div>
+</section>
+</div>
+</section>
+<section class="view" id="costView"><div class="insight-strip" id="costInsights">
+<div class="insight-item"><div class="insight-icon">▣</div><div><span class="insight-caption">产品总数</span><strong id="statProductCount">0</strong></div></div>
+<div class="insight-item"><div class="insight-icon soft-indigo">◇</div><div><span class="insight-caption">组合产品</span><strong id="statComboCount">0</strong></div></div>
+<div class="insight-item"><div class="insight-icon soft-slate">◉</div><div><span class="insight-caption">当前启用</span><strong id="statActiveCount">0</strong></div></div>
+<div class="insight-note"><span class="legend-edit"></span> 白色可编辑 <span class="legend-calc"></span> 灰蓝自动计算</div>
+</div>
+<div class="toolbar"><div class="filter-fields">
+<label class="search-wrap"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="18"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><input aria-label="搜索产品" autocomplete="off" id="productSearch" placeholder="搜索产品或规格…"/></label>
+<select aria-label="筛选产品类型" class="type-filter" id="productFilter"><option value="all">全部类型</option><option value="product">普通产品</option><option value="combo">组合产品</option></select>
+<span class="search-count" id="searchCount">显示全部</span>
+</div>
+<div>
+
+
+</div>
+<div class="toolbar-action-group">
+<button class="btn" id="batchCostBtn">批量复制 / 粘贴</button>
+<button class="btn" id="addCostItemBtn">＋ 添加产品</button>
+<button class="btn primary" id="addComboItemBtn">＋ 添加组合</button>
+</div>
+</div>
+<section class="block cost-manager">
+<div class="table-scroll">
+<table class="cost-table">
+<thead>
+<tr>
+<th class="rank">排序</th>
+<th class="cost-name">产品品类</th>
+<th class="cost-components">成份</th>
+<th class="cost-component-qty">成份数量</th>
+<th class="cost-spec">规格 / 备注</th>
+<th class="cost-value">单个成本</th>
+<th class="cost-list-price">单品标价</th>
+<th class="cost-profit">单品利润</th>
+<th class="cost-status">状态</th>
+<th class="compact-action">操作</th>
+</tr>
+</thead>
+<tbody id="costBody"></tbody>
+</table>
+</div>
+</section>
+</section>
+</main>
+</div></div></div>
+<div aria-live="polite" class="toast" id="toast" role="status"></div>
+<div class="modal-backdrop" hidden="" id="batchModal">
+<div aria-labelledby="batchTitle" aria-modal="true" class="modal-card" role="dialog">
+<div class="modal-head">
+<div>
+<div class="modal-title" id="batchTitle">批量复制 / 粘贴</div>
+<div class="modal-hint" id="batchHint"></div>
+</div>
+<button aria-label="关闭" class="modal-close" id="closeBatchBtn">×</button>
+</div>
+<div class="modal-body">
+<label class="batch-type-row">数据类型
           <select id="batchType">
-            <option value="products">套餐产品</option>
-            <option value="fees">附加费用</option>
-            <option value="cost">产品信息</option>
-          </select>
-        </label>
-        <div class="batch-paste-options">
-          <label>粘贴模式
+<option value="products">套餐产品</option>
+<option value="fees">附加费用</option>
+<option value="cost">产品信息</option>
+</select>
+</label>
+<div class="batch-paste-options">
+<label>粘贴模式
             <select id="batchMode">
-              <option value="table">整表多列</option>
-              <option value="column">单列批量</option>
-            </select>
-          </label>
-          <label id="batchColumnWrap" hidden>目标列
+<option value="table">整表多列</option>
+<option value="column">单列批量</option>
+</select>
+</label>
+<label hidden="" id="batchColumnWrap">目标列
             <select id="batchColumn"></select>
-          </label>
-        </div>
-        <textarea id="batchText" class="batch-text" spellcheck="false" placeholder="可直接从 Excel / WPS 复制多行后粘贴到这里"></textarea>
-        <div class="batch-help">支持 Excel / WPS 多列、单列多行粘贴。直接在表格某个输入框内粘贴单列数据，会从当前行向下填写。所有行先校验，出现错误不会部分应用。</div>
-        <div id="batchError" class="batch-error" role="alert" hidden></div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn" id="copyBatchBtn">复制当前数据</button>
-        <div class="modal-actions-right">
-          <button class="btn" id="cancelBatchBtn">取消</button>
-          <button class="btn primary" id="applyBatchBtn">应用粘贴</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="./app.js" defer></script>
+</label>
+</div>
+<textarea class="batch-text" id="batchText" placeholder="可直接从 Excel / WPS 复制多行后粘贴到这里" spellcheck="false"></textarea>
+<div class="batch-help">支持 Excel / WPS 多列、单列多行粘贴。直接在表格某个输入框内粘贴单列数据，会从当前行向下填写。所有行先校验，出现错误不会部分应用。</div>
+<div class="batch-error" hidden="" id="batchError" role="alert"></div>
+</div>
+<div class="modal-actions">
+<button class="btn" id="copyBatchBtn">复制当前数据</button>
+<div class="modal-actions-right">
+<button class="btn" id="cancelBatchBtn">取消</button>
+<button class="btn primary" id="applyBatchBtn">应用粘贴</button>
+</div>
+</div>
+</div>
+</div>
+<script defer="" src="./app.js"></script>
 </body>
 </html>

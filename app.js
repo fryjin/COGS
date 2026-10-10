@@ -525,6 +525,22 @@
     });
   }
 
+  function quantityP(amount) {
+    return decimalString(amount, 2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1') + 'P';
+  }
+
+  function updatePricingMetrics() {
+    const pkg = currentPackage();
+    if (!pkg) return;
+    const basic = metrics(pkg, SCALE);
+    $('metricPackageName').textContent = pkg.name;
+    $('metricItemsCount').textContent = quantityP(basic.qty);
+    $('metricTotalSales').textContent = money(basic.sales);
+    $('metricProfit').textContent = money(basic.profit);
+    $('metricProfit').classList.toggle('neg', basic.profit < 0n);
+    $('metricProfit').classList.toggle('pos', basic.profit >= 0n);
+  }
+
   function renderSummary() {
     const pkg = currentPackage();
     const schemes = [
@@ -532,7 +548,7 @@
       ...pkg.discounts.map(d => ({label:`${d.zhe || '0'}折`, factor:discountFactor(d)}))
     ];
     const rows = [
-      ['商品总数量','qty',x=>decimalString(x,2),''],
+      ['商品总数量','qty',quantityP,''],
       ['销售总额','sales',money,''],
       ['商品成本','goods',money,''],
       ['固定附加成本','fixed',money,''],
@@ -545,7 +561,7 @@
     const values = schemes.map(s => metrics(pkg, s.factor));
 
     $('summaryHead').innerHTML = `<tr>
-      <th class="summary-label">指标</th>
+      <th class="summary-label">折扣方案</th>
       ${schemes.map((s,i)=>`<th class="summary-value ${i===0?'summary-original':'summary-discount'}">${escapeHtml(s.label)}</th>`).join('')}
     </tr>`;
 
@@ -558,6 +574,7 @@
           return `<td class="summary-value ${tone}">${formatter(val)}</td>`;
         }).join('')}
       </tr>`).join('');
+    updatePricingMetrics();
   }
 
   function componentOptions(combo, component) {
@@ -574,62 +591,87 @@
       }).join('');
   }
 
+  const expandedCombos = new Set();
+  let productFilterText = '';
+  let productFilterType = 'all';
+
   function renderCostItems() {
     if (!currentProject().costItems.length) {
+      $('searchCount').textContent='显示 0 / 0';
       $('costBody').innerHTML = `<tr><td class="empty-cell" colspan="10">暂无产品信息，可添加普通产品，也可以创建由多个产品组成的组合。</td></tr>`;
       return;
     }
 
-    $('costBody').innerHTML = currentProject().costItems.map((item,index) => {
+    const allItems = currentProject().costItems;
+    const visibleItems=allItems.map((item,index)=>({item,index})).filter(({item}) => {
+      if (productFilterType !== 'all' && item.type !== productFilterType) return false;
+      if (!productFilterText) return true;
+      return `${item.name} ${item.spec || ''}`.toLowerCase().includes(productFilterText);
+    });
+    $('searchCount').textContent = `显示 ${visibleItems.length} / ${allItems.length}`;
+    if (!visibleItems.length) {
+      $('costBody').innerHTML = '<tr><td class="empty-cell" colspan="10">没有符合条件的产品，可调整搜索词或筛选条件。</td></tr>';
+      return;
+    }
+    $('costBody').innerHTML = visibleItems.map(({item,index}) => {
       const isCombo = item.type === 'combo';
       const components = Array.isArray(item.components) ? item.components : [];
-      const componentCell = isCombo ? `
-        <div class="component-stack">
-          ${components.map(component => `
-            <div class="component-line">
-              <select class="component-select" data-item="${item.id}" data-component="${component.id}">
-                <option value="">请选择成份</option>
-                ${componentOptions(item, component)}
-              </select>
-              <button class="component-remove" data-item="${item.id}" data-component="${component.id}" title="删除成份">×</button>
-            </div>`).join('')}
-          <button class="component-add add-component" data-item="${item.id}">＋ 添加成份</button>
-        </div>` : `<div class="cell center slash-cell">/</div>`;
-      const quantityCell = isCombo ? `
-        <div class="component-qty-stack">
-          ${components.map(component => `
-            <div class="component-line">
-              <input class="component-qty-input" data-item="${item.id}" data-component="${component.id}" value="${escapeHtml(component.qty)}" inputmode="decimal" />
-            </div>`).join('')}
-        </div>` : `<div class="cell center slash-cell">/</div>`;
+      const expanded = expandedCombos.has(item.id);
+      const compSummary = components.map(c => {
+        const ref=costItem(c.costItemId);
+        return `${ref ? ref.name : '待选择'} × ${c.qty}`;
+      }).join(' · ');
       const costCell = isCombo
         ? `<div class="cell combo-cost">${unitMoney(effectiveCostById(item.id))}</div>`
         : `<div class="inline-value"><span>¥</span><input class="cell-input cost-value-input" data-id="${item.id}" value="${escapeHtml(item.cost)}" inputmode="decimal" /></div>`;
       const profit = nonNegative(item.listPrice) - effectiveCostById(item.id);
-
-      return `<tr class="${isCombo?'cost-row-combo':''}">
-        <td class="rank"><div class="cell center">${index+1}</div></td>
+      const summaryCell = isCombo ? `<span class="combo-summary" title="${escapeHtml(compSummary)}">${escapeHtml(compSummary || '尚未添加成份')}</span>` : '<span class="slash-cell">—</span>';
+      const memberCount = isCombo ? `${components.length} 项` : '—';
+      const componentCell = components.map(component => `
+        <div class="combo-component-row">
+          <select class="component-select" data-item="${item.id}" data-component="${component.id}">
+            <option value="">请选择成份</option>
+            ${componentOptions(item, component)}
+          </select>
+          <label class="combo-component-quantity">数量 <input class="component-qty-input" data-item="${item.id}" data-component="${component.id}" value="${escapeHtml(component.qty)}" inputmode="decimal" /></label>
+          <button class="component-remove" data-item="${item.id}" data-component="${component.id}" title="移除成份">×</button>
+        </div>`).join('');
+      const detail = isCombo && expanded ? `<tr class="combo-detail-row"><td colspan="10">
+        <div class="combo-detail-inner">
+          <div class="combo-detail-aside"><span class="combo-detail-caption">组合结构</span><strong>${escapeHtml(item.name)}</strong><span>引用产品成本自动汇总，不修改原有计算逻辑。</span></div>
+          <div class="combo-editor-list">${componentCell}<button class="component-add add-component" data-item="${item.id}">＋ 添加成份</button></div>
+        </div>
+      </td></tr>` : '';
+      return `<tr class="catalog-row ${isCombo ? 'catalog-combo-row' : ''}">
+        <td class="rank"><div class="cell center muted-rank">${index+1}</div></td>
         <td>
-          <div style="display:flex;align-items:center;height:35px">
+          <div class="catalog-name-row">
+            ${isCombo ? `<button class="combo-toggle ${expanded?'expanded':''}" data-item="${item.id}" aria-label="${expanded?'收起':'展开'}组合成份" aria-expanded="${expanded}">▸</button>` : '<span class="combo-toggle-spacer"></span>'}
             <input class="cell-input cost-name-input" data-id="${item.id}" value="${escapeHtml(item.name)}" />
             ${isCombo?'<span class="cost-kind">组合</span>':''}
           </div>
         </td>
-        <td>${componentCell}</td>
-        <td>${quantityCell}</td>
+        <td>${summaryCell}</td>
+        <td><div class="cell center small-muted">${memberCount}</div></td>
         <td><input class="cell-input cost-spec-input" data-id="${item.id}" value="${escapeHtml(item.spec)}" /></td>
         <td class="${isCombo?'auto':''}">${costCell}</td>
         <td><div class="inline-value"><span>¥</span><input class="cell-input cost-list-price-input" data-id="${item.id}" value="${escapeHtml(item.listPrice)}" inputmode="decimal" /></div></td>
         <td class="auto"><div class="cell ${profit>=0n?'pos':'neg'}">${money(profit)}</div></td>
-        <td>
-          <select class="cell-select cost-active-select" data-id="${item.id}">
-            <option value="1" ${item.active?'selected':''}>启用</option>
-            <option value="0" ${!item.active?'selected':''}>停用</option>
-          </select>
-        </td>
+        <td><select class="cell-select cost-active-select" data-id="${item.id}"><option value="1" ${item.active?'selected':''}>启用</option><option value="0" ${!item.active?'selected':''}>停用</option></select></td>
         <td class="compact-action"><div class="cell center"><button class="delete-icon delete-cost-item" data-id="${item.id}" title="删除">×</button></div></td>
-      </tr>`;
+      </tr>${detail}`;
     }).join('');
+    document.querySelectorAll('.combo-toggle').forEach(el => {
+      el.onclick = e => {
+        const id=e.currentTarget.dataset.item;
+        if(expandedCombos.has(id))expandedCombos.delete(id); else expandedCombos.add(id);
+        const scroller=el.closest('.table-scroll');
+        const savedTop=scroller?.scrollTop||0;
+        renderCostItems();
+        const updated=$('costBody').closest('.table-scroll');
+        if(updated)updated.scrollTop=savedTop;
+      };
+    });
 
     document.querySelectorAll('.cost-name-input').forEach(el => {
       el.oninput = e => {
@@ -1182,7 +1224,30 @@
     renderSummary();
     renderCostItems();
     updateSaveState();
+    renderV8Context();
     enableVerticalScrollHandoff();
+  }
+
+  function renderV8Context() {
+    const project=currentProject();
+    const pkg=currentPackage();
+    const all=project.costItems;
+    $('sidebarProjectName').textContent=project.name;
+    $('statProductCount').textContent=all.length;
+    $('statComboCount').textContent=all.filter(i=>i.type==='combo').length;
+    $('statActiveCount').textContent=all.filter(i=>i.active).length;
+    updatePricingMetrics();
+  }
+  function selectV8View(next) {
+    const pricing = next==='pricing';
+    document.querySelectorAll('.mobile-view-tab').forEach(x=>x.classList.toggle('active',x.dataset.view===next));
+    document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.nav===next));
+    $('pricingView').classList.toggle('active', pricing);
+    $('costView').classList.toggle('active', !pricing);
+    $('viewTitle').textContent=pricing?'套餐售价计算':'产品信息设置';
+    $('breadcrumbCurrent').textContent=pricing?'售价计算':'产品管理';
+    $('viewSubtitle').textContent=pricing?'选择套餐，对比成本、折扣与最终利润。':'维护产品、组合与基础定价，成本变化自动传递到套餐。';
+    window.scrollTo({top:0,behavior:'instant'});
   }
 
   $('projectSelect').onchange = e => {
@@ -1453,14 +1518,27 @@
     }
   };
 
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.onclick = () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      tab.classList.add('active');
-      const pricing = tab.dataset.view === 'pricing';
-      $('pricingView').classList.toggle('active', pricing);
-      $('costView').classList.toggle('active', !pricing);
-    };
+  document.querySelectorAll('.mobile-view-tab').forEach(tab=>{
+    tab.onclick=()=>selectV8View(tab.dataset.view);
+  });
+  document.querySelectorAll('.nav-item').forEach(btn=>{
+    btn.onclick=()=>selectV8View(btn.dataset.nav);
+  });
+  $('productSearch').oninput=e=>{
+    productFilterText=e.currentTarget.value.toLowerCase().trim();
+    renderCostItems();
+  };
+  $('productFilter').onchange=e=>{
+    productFilterType=e.currentTarget.value;
+    renderCostItems();
+  };
+  $('sidebarCollapse').onclick=()=>{
+    document.documentElement.classList.toggle('sidebar-manual-collapse');
+  };
+  document.addEventListener('click',e=>{
+    for(const el of document.querySelectorAll('.dropdown[open]')){
+      if(!el.contains(e.target))el.removeAttribute('open');
+    }
   });
 
   window.addEventListener('beforeunload', e => {
@@ -1470,4 +1548,5 @@
   });
 
   renderAll();
+  selectV8View('cost');
 })();
