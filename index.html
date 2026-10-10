@@ -31,6 +31,14 @@
       <div class="page-head">
         <div class="title-row">
           <h1>售价计算</h1>
+          <div class="project-controls">
+            <span class="project-label">项目</span>
+            <select id="projectSelect" class="project-select"></select>
+            <button class="mini-btn" id="newProjectBtn">＋ 项目</button>
+            <button class="mini-btn" id="copyProjectBtn">复制</button>
+            <button class="mini-btn" id="renameProjectBtn">重命名</button>
+            <button class="mini-btn danger-text" id="deleteProjectBtn">删除</button>
+          </div>
           <div class="tabs">
             <button class="tab" data-view="cost">出厂价格设置</button>
             <button class="tab active" data-view="pricing">套餐售价计算</button>
@@ -52,6 +60,7 @@
             <button class="btn danger-light" id="deletePackageBtn">删除套餐</button>
           </div>
           <div class="toolbar-right">
+            <button class="btn" id="batchPricingBtn">批量复制 / 粘贴</button>
             <button class="btn" id="addProductBtn">＋ 添加产品</button>
             <button class="btn" id="addFeeBtn">＋ 添加费用</button>
             <button class="btn" id="addDiscountBtn">＋ 添加折扣方案</button>
@@ -116,6 +125,7 @@
             <span class="toolbar-help">维护产品与组合的出厂价格，套餐售价计算自动引用。</span>
           </div>
           <div class="toolbar-left">
+            <button class="btn" id="batchCostBtn">批量复制 / 粘贴</button>
             <button class="btn" id="addCostItemBtn">＋ 添加产品</button>
             <button class="btn primary" id="addComboItemBtn">＋ 添加组合</button>
           </div>
@@ -144,6 +154,38 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div id="batchModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="batchTitle">
+      <div class="modal-head">
+        <div>
+          <div id="batchTitle" class="modal-title">批量复制 / 粘贴</div>
+          <div id="batchHint" class="modal-hint"></div>
+        </div>
+        <button id="closeBatchBtn" class="modal-close" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <label class="batch-type-row">数据类型
+          <select id="batchType">
+            <option value="products">套餐产品</option>
+            <option value="fees">附加费用</option>
+            <option value="cost">出厂价格</option>
+          </select>
+        </label>
+        <textarea id="batchText" class="batch-text" spellcheck="false" placeholder="可直接从 Excel / WPS 复制多行后粘贴到这里"></textarea>
+        <div class="batch-help">支持从 Excel / WPS 直接复制多行（Tab 分列、换行分行）；第一行表头自动忽略。应用前会检查全部行，有错误时不会写入任何一行。</div>
+        <div id="batchError" class="batch-error" role="alert" hidden></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="copyBatchBtn">复制当前数据</button>
+        <div class="modal-actions-right">
+          <button class="btn" id="cancelBatchBtn">取消</button>
+          <button class="btn primary" id="applyBatchBtn">应用粘贴</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="./app.js" defer></script>
 </body>
 </html>
