@@ -40,7 +40,7 @@
             <button class="mini-btn danger-text" id="deleteProjectBtn">删除</button>
           </div>
           <div class="tabs">
-            <button class="tab" data-view="cost">出厂价格设置</button>
+            <button class="tab" data-view="cost">产品信息设置</button>
             <button class="tab active" data-view="pricing">套餐售价计算</button>
           </div>
         </div>
@@ -71,7 +71,7 @@
           <section class="block products-block">
             <div class="block-head">
               <div class="block-title"><span class="step">1</span>产品售价与成本计算区</div>
-              <div class="block-note">产品、数量、单品标价可编辑；成本与利润自动计算</div>
+              <div class="block-note">选择产品并填写数量；标价与成本从产品信息设置自动引用</div>
             </div>
             <div class="table-scroll" id="productScroll">
               <table id="productTable">
@@ -121,8 +121,8 @@
       <section id="costView" class="view">
         <div class="toolbar">
           <div>
-            <strong>出厂价格设置</strong>
-            <span class="toolbar-help">维护产品与组合的出厂价格，套餐售价计算自动引用。</span>
+            <strong>产品信息设置</strong>
+            <span class="toolbar-help">统一维护产品与组合的单个成本和单品标价，套餐自动计算利润。</span>
           </div>
           <div class="toolbar-left">
             <button class="btn" id="batchCostBtn">批量复制 / 粘贴</button>
@@ -141,6 +141,8 @@
                   <th class="cost-component-qty">成份数量</th>
                   <th class="cost-spec">规格 / 备注</th>
                   <th class="cost-value">单个成本</th>
+                  <th class="cost-list-price">单品标价</th>
+                  <th class="cost-profit">单品利润</th>
                   <th class="cost-status">状态</th>
                   <th class="compact-action">操作</th>
                 </tr>
@@ -169,11 +171,22 @@
           <select id="batchType">
             <option value="products">套餐产品</option>
             <option value="fees">附加费用</option>
-            <option value="cost">出厂价格</option>
+            <option value="cost">产品信息</option>
           </select>
         </label>
+        <div class="batch-paste-options">
+          <label>粘贴模式
+            <select id="batchMode">
+              <option value="table">整表多列</option>
+              <option value="column">单列批量</option>
+            </select>
+          </label>
+          <label id="batchColumnWrap" hidden>目标列
+            <select id="batchColumn"></select>
+          </label>
+        </div>
         <textarea id="batchText" class="batch-text" spellcheck="false" placeholder="可直接从 Excel / WPS 复制多行后粘贴到这里"></textarea>
-        <div class="batch-help">支持从 Excel / WPS 直接复制多行（Tab 分列、换行分行）；第一行表头自动忽略。应用前会检查全部行，有错误时不会写入任何一行。</div>
+        <div class="batch-help">支持 Excel / WPS 多列、单列多行粘贴。直接在表格某个输入框内粘贴单列数据，会从当前行向下填写。所有行先校验，出现错误不会部分应用。</div>
         <div id="batchError" class="batch-error" role="alert" hidden></div>
       </div>
       <div class="modal-actions">
