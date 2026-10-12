@@ -4,7 +4,8 @@
 
   const STORAGE_KEY = 'dopamine-pricing-web-v1';
   const STATE_VERSION = 4;
-  const SCALE = 1000000n;
+  const PRECISION = 12;
+  const SCALE = 10n ** BigInt(PRECISION);
 
   const $ = id => document.getElementById(id);
   const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -21,7 +22,7 @@
     if (!/^\d*(\.\d*)?$/.test(s)) return 0n;
     let [whole = '0', frac = ''] = s.split('.');
     whole = whole || '0';
-    frac = (frac + '000000').slice(0, 6);
+    frac = (frac + '0'.repeat(PRECISION)).slice(0, PRECISION);
     return sign * (BigInt(whole) * SCALE + BigInt(frac));
   }
   const add = (a,b) => a+b;
@@ -32,7 +33,7 @@
   function decimalString(x, places=2) {
     const neg = x < 0n;
     if (neg) x = -x;
-    const factor = 10n ** BigInt(6 - places);
+    const factor = 10n ** BigInt(PRECISION - places);
     let rounded = (x + factor/2n) / factor;
     const base = 10n ** BigInt(places);
     const whole = rounded / base;
@@ -370,7 +371,7 @@
         <th rowspan="2" class="compact-action">操作</th>
       </tr>
       <tr>
-        ${pkg.discounts.map(() => `<th class="discount-sub money-col">折扣价</th><th class="discount-sub profit-col">商品利润小计</th>`).join('')}
+        ${pkg.discounts.map(() => `<th class="discount-sub money-col">折扣价小计</th><th class="discount-sub profit-col">商品利润小计</th>`).join('')}
       </tr>`;
 
     if (!pkg.products.length) {
@@ -400,9 +401,9 @@
         <td class="profit-col auto sticky s6"><div class="cell ${profitSubtotal>=0n?'pos':'neg'}">${money(profitSubtotal)}</div></td>
         ${pkg.discounts.map(d => {
           const factor = discountFactor(d);
-          const discountedPrice = mul(p, factor);
-          const discountedProfit = mul(discountedPrice - c, q);
-          return `<td class="money-col auto"><div class="cell">${money(discountedPrice)}</div></td>
+          const discountedSubtotal = mul(listSubtotal, factor);
+          const discountedProfit = discountedSubtotal - costSubtotal;
+          return `<td class="money-col auto"><div class="cell">${money(discountedSubtotal)}</div></td>
                   <td class="profit-col auto"><div class="cell ${discountedProfit>=0n?'pos':'neg'}">${money(discountedProfit)}</div></td>`;
         }).join('')}
         <td class="compact-action"><div class="cell center"><button class="delete-icon delete-product" data-id="${row.id}" title="删除产品">×</button></div></td>
