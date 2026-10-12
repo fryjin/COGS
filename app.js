@@ -50,9 +50,9 @@
       name,
       products: [],
       discounts: [
-        {id: uid('disc'), zhe: '7'},
-        {id: uid('disc'), zhe: '8'},
-        {id: uid('disc'), zhe: '8.5'}
+        {id: uid('disc'), zhe: '6'},
+        {id: uid('disc'), zhe: '6.5'},
+        {id: uid('disc'), zhe: '7'}
       ],
       fees: []
     };
@@ -1345,7 +1345,7 @@
     const id = uid('pkg');
     currentProject().packages.push({
       id, name:name.trim(), products:[],
-      discounts:[{id:uid('disc'),zhe:'7'},{id:uid('disc'),zhe:'8'},{id:uid('disc'),zhe:'8.5'}],
+      discounts:[{id:uid('disc'),zhe:'6'},{id:uid('disc'),zhe:'6.5'},{id:uid('disc'),zhe:'7'}],
       fees:[]
     });
     currentProject().currentPackageId = id;
