@@ -4,6 +4,7 @@
 
   const STORAGE_KEY = 'dopamine-pricing-web-v1';
   const STATE_VERSION = 4;
+  const AUTO_SAVE_INTERVAL_MS = 5 * 60 * 1000;
   const PRECISION = 12;
   const SCALE = 10n ** BigInt(PRECISION);
 
@@ -189,18 +190,29 @@
   let state = clone(savedState);
   let dirty = migrationPending;
 
-  function persist() {
+  let lastSavedAt = 0;
+  let lastSaveKind = 'initial';
+
+  // A single localStorage write is synchronous. Automatic saves reuse exactly
+  // the manual-save snapshot and key (no extra copy that could get out of sync).
+  // Do not write unchanged states repeatedly.
+  function persist(kind = 'manual') {
+    if (kind !== 'manual' && !dirty) return true;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      toast('保存失败：本机浏览器存储不可用，请先导出备份');
-      return;
+      updateSaveState(true);
+      if (kind === 'manual') toast('保存失败：本机浏览器存储不可用，请先导出备份');
+      return false;
     }
     savedState = clone(state);
     migrationPending = false;
     dirty = false;
+    lastSavedAt = Date.now();
+    lastSaveKind = kind;
     updateSaveState();
-    toast('已保存');
+    if (kind === 'manual') toast('已保存');
+    return true;
   }
 
   function markDirty() {
@@ -208,8 +220,41 @@
     updateSaveState();
   }
 
-  function updateSaveState() {
-    $('saveState').textContent = dirty ? (migrationPending ? '旧数据已兼容升级，请保存' : '有未保存的修改') : '已保存到本机';
+  function updateSaveState(failed = false) {
+    const label = $('saveState');
+    if (failed) {
+      label.textContent = '保存失败，请导出备份';
+    } else if (dirty) {
+      label.textContent = migrationPending ? '旧数据待保存' : '有未保存的修改';
+    } else if (lastSavedAt) {
+      const hhmm = new Date(lastSavedAt).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit',hour12:false});
+      label.textContent = `${lastSaveKind === 'manual' ? '已保存' : '已自动保存'} ${hhmm}`;
+    } else {
+      label.textContent = '已保存到本机';
+    }
+    label.title = '每 5 分钟自动保存一次；离开页面或电脑休眠前尽量保存，唤醒后立即补存。真正休眠期间浏览器无法运行。';
+  }
+
+  // Modern browsers suspend timers while a computer sleeps. Visibility/pagehide
+  // save before suspension where possible, and resume/focus/pageshow catch up
+  // after waking. No timer can run *during* OS sleep.
+  function autoSaveIfNeeded() {
+    if (dirty) persist('auto');
+  }
+
+  function setupAutoSave() {
+    window.setInterval(autoSaveIfNeeded, AUTO_SAVE_INTERVAL_MS);
+    document.addEventListener('visibilitychange', () => {
+      // Save before suspension, and also cover wake/resume when visible.
+      autoSaveIfNeeded();
+    });
+    window.addEventListener('pagehide', autoSaveIfNeeded);
+    window.addEventListener('blur', autoSaveIfNeeded);
+    window.addEventListener('pageshow', autoSaveIfNeeded);
+    window.addEventListener('focus', autoSaveIfNeeded);
+    // Chromium's Page Lifecycle API (supported browsers only).
+    document.addEventListener('freeze', autoSaveIfNeeded);
+    document.addEventListener('resume', autoSaveIfNeeded);
   }
 
   function toast(message) {
@@ -413,6 +458,39 @@
     bindProductEvents();
   }
 
+  // Stage valid numeric text without repainting the table or changing focus.
+  // Hence an autosave during a long input session preserves the last valid
+  // value; visible calculations still update only on Enter/blur as before.
+  function stageNumericValue(el) {
+    const value = el.value.trim();
+    if (!/^\d+(?:\.\d{0,12})?$/.test(value)) {
+      markDirty();
+      return;
+    }
+    const id = el.dataset.id;
+    if (el.matches('.qty-input')) {
+      const row = currentPackage().products.find(r => r.id === id);
+      if (row) row.qty = value;
+    } else if (el.matches('.discount-input')) {
+      const discount = currentPackage().discounts.find(d => d.id === id);
+      if (discount) discount.zhe = value;
+    } else if (el.matches('.fee-value-input')) {
+      const fee = currentPackage().fees.find(f => f.id === id);
+      if (fee) fee.value = value;
+    } else if (el.matches('.cost-value-input')) {
+      const item = costItem(id);
+      if (item && item.type !== 'combo') item.cost = value;
+    } else if (el.matches('.cost-list-price-input')) {
+      const item = costItem(id);
+      if (item) item.listPrice = value;
+    } else if (el.matches('.component-qty-input')) {
+      const combo = costItem(el.dataset.item);
+      const component = combo?.components?.find(c => c.id === el.dataset.component);
+      if (component) component.qty = value;
+    }
+    markDirty();
+  }
+
   function bindCommittedNumber(selector, commit) {
     document.querySelectorAll(selector).forEach(el => {
       el.onkeydown = e => {
@@ -421,6 +499,7 @@
           e.currentTarget.blur();
         }
       };
+      el.oninput = e => stageNumericValue(e.currentTarget);
       el.onchange = e => commit(e.currentTarget);
     });
   }
@@ -1479,7 +1558,7 @@
     }
   };
 
-  $('saveBtn').onclick = persist;
+  $('saveBtn').onclick = () => persist('manual');
 
   $('resetBtn').onclick = () => {
     if (!dirty) return;
@@ -1550,4 +1629,5 @@
 
   renderAll();
   selectV8View('cost');
+  setupAutoSave();
 })();
