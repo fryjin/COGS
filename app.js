@@ -292,6 +292,22 @@
     }, 0n);
   }
 
+  // Product prices are user-entered, while combo prices are always derived
+  // from component prices and quantities. Support nested combos; guard
+  // against corrupted legacy cycles without changing the saved schema.
+  function effectiveListPriceById(id, visiting = new Set()) {
+    const item = costItem(id);
+    if (!item) return 0n;
+    if (item.type !== 'combo') return nonNegative(item.listPrice ?? '0');
+    if (visiting.has(id)) return 0n;
+    const nextVisiting = new Set(visiting);
+    nextVisiting.add(id);
+    return (item.components || []).reduce((sum, component) => {
+      if (!component.costItemId || component.costItemId === id) return sum;
+      return add(sum, mul(effectiveListPriceById(component.costItemId, nextVisiting), nonNegative(component.qty)));
+    }, 0n);
+  }
+
   function unitCost(row) {
     return effectiveCostById(row.costItemId);
   }
@@ -320,7 +336,7 @@
   }
 
   function price(row) {
-    return nonNegative(costItem(row.costItemId)?.listPrice ?? '0');
+    return effectiveListPriceById(row.costItemId);
   }
 
   function discountFactor(discount) {
@@ -482,7 +498,7 @@
       if (item && item.type !== 'combo') item.cost = value;
     } else if (el.matches('.cost-list-price-input')) {
       const item = costItem(id);
-      if (item) item.listPrice = value;
+      if (item && item.type !== 'combo') item.listPrice = value;
     } else if (el.matches('.component-qty-input')) {
       const combo = costItem(el.dataset.item);
       const component = combo?.components?.find(c => c.id === el.dataset.component);
@@ -704,7 +720,7 @@
       const costCell = isCombo
         ? `<div class="cell combo-cost">${unitMoney(effectiveCostById(item.id))}</div>`
         : `<div class="inline-value"><span>¥</span><input class="cell-input cost-value-input" data-id="${item.id}" value="${escapeHtml(item.cost)}" inputmode="decimal" /></div>`;
-      const profit = nonNegative(item.listPrice) - effectiveCostById(item.id);
+      const profit = effectiveListPriceById(item.id) - effectiveCostById(item.id);
       const summaryCell = isCombo ? `<span class="combo-summary" title="${escapeHtml(compSummary)}">${escapeHtml(compSummary || '尚未添加成份')}</span>` : '<span class="slash-cell">—</span>';
       const memberCount = isCombo ? `${components.length} 项` : '—';
       const componentCell = components.map(component => `
@@ -718,7 +734,7 @@
         </div>`).join('');
       const detail = isCombo && expanded ? `<tr class="combo-detail-row"><td colspan="10">
         <div class="combo-detail-inner">
-          <div class="combo-detail-aside"><span class="combo-detail-caption">组合结构</span><strong>${escapeHtml(item.name)}</strong><span>引用产品成本自动汇总，不修改原有计算逻辑。</span></div>
+          <div class="combo-detail-aside"><span class="combo-detail-caption">组合结构</span><strong>${escapeHtml(item.name)}</strong><span>组合成本及标价均按成份数量自动汇总，利润同步计算。</span></div>
           <div class="combo-editor-list">${componentCell}<button class="component-add add-component" data-item="${item.id}">＋ 添加成份</button></div>
         </div>
       </td></tr>` : '';
@@ -735,7 +751,9 @@
         <td><div class="cell center small-muted">${memberCount}</div></td>
         <td><input class="cell-input cost-spec-input" data-id="${item.id}" value="${escapeHtml(item.spec)}" /></td>
         <td class="${isCombo?'auto':''}">${costCell}</td>
-        <td><div class="inline-value"><span>¥</span><input class="cell-input cost-list-price-input" data-id="${item.id}" value="${escapeHtml(item.listPrice)}" inputmode="decimal" /></div></td>
+        <td class="${isCombo?'auto':''}">${isCombo
+          ? `<div class="cell" title="组合标价由成份标价 × 数量自动计算">${money(effectiveListPriceById(item.id))}</div>`
+          : `<div class="inline-value"><span>¥</span><input class="cell-input cost-list-price-input" data-id="${item.id}" value="${escapeHtml(item.listPrice)}" inputmode="decimal" /></div>`}</td>
         <td class="auto"><div class="cell ${profit>=0n?'pos':'neg'}">${money(profit)}</div></td>
         <td><select class="cell-select cost-active-select" data-id="${item.id}"><option value="1" ${item.active?'selected':''}>启用</option><option value="0" ${!item.active?'selected':''}>停用</option></select></td>
         <td class="compact-action"><div class="cell center"><button class="delete-icon delete-cost-item" data-id="${item.id}" title="删除">×</button></div></td>
@@ -777,7 +795,7 @@
     });
     bindCommittedNumber('.cost-list-price-input', el => {
       const item = costItem(el.dataset.id);
-      if (!item) return;
+      if (!item || item.type === 'combo') return;
       if (!validDecimal(el.value)) { toast('请输入不小于 0 的有效售价'); renderCostItems(); return; }
       item.listPrice = el.value;
       markDirty(); renderCostItems(); renderProducts(); renderFees(); renderSummary();
@@ -948,7 +966,7 @@
       }
       const components = item.components || [];
       if (!components.length) {
-        rows.push([item.name,'','',item.spec || '',decimalString(effectiveCostById(item.id),4),item.listPrice || '0',item.active ? '启用' : '停用']);
+        rows.push([item.name,'','',item.spec || '',decimalString(effectiveCostById(item.id),4),decimalString(effectiveListPriceById(item.id), 6),item.active ? '启用' : '停用']);
         return;
       }
       components.forEach((component,index) => {
@@ -959,7 +977,7 @@
           component.qty,
           index === 0 ? (item.spec || '') : '',
           index === 0 ? decimalString(effectiveCostById(item.id),4) : '',
-          index === 0 ? (item.listPrice || '0') : '',
+          index === 0 ? decimalString(effectiveListPriceById(item.id), 6) : '',
           index === 0 ? (item.active ? '启用' : '停用') : ''
         ]);
       });
@@ -1087,9 +1105,9 @@
           id:uid('cost'),type:'combo',name,spec,cost:'0',listPrice:'0',active:enabled,components:[],
           pendingSpecs:[{label:ingredient,qty:entry.qty || '1',rowNumber:entry.rowNumber}]
         };
-        const listPrice = entry.listPrice || '0';
-        if (!validDecimal(listPrice)) throw new Error(`第 ${entry.rowNumber} 行：单品标价不是有效数字`);
-        combo.listPrice = listPrice;
+        // Combo list prices are derived after component references are resolved.
+        // Ignore the exported calculated-price column, never treat it as an override.
+        combo.listPrice = '0';
         project.costItems.push(combo);
         pendingCombos.push(combo);
         activeCombo=combo;
@@ -1151,7 +1169,7 @@
         if (!items[i]) items.push({id:uid('cost'),type:'product',name:`新产品${rowNo}`,
           spec:'',cost:'0',listPrice:'0',active:true,components:[]});
         const item=items[i];
-        if (field==='cost' && item.type==='combo') throw new Error(`第 ${rowNo} 行：组合成本自动计算，无法粘贴覆盖`);
+        if ((field==='cost' || field==='listPrice') && item.type==='combo') throw new Error(`第 ${rowNo} 行：组合成本和标价自动计算，无法粘贴覆盖`);
         if (field==='cost' || field==='listPrice') {
           if (!validDecimal(val)) throw new Error(`第 ${rowNo} 行：请输入不小于 0 的有效数字`);
           item[field]=val;
@@ -1210,6 +1228,7 @@
     const data=items.map(item=>{
       if (type==='cost') {
         if (field==='cost') return item.type==='combo'?decimalString(effectiveCostById(item.id),4):item.cost;
+        if (field==='listPrice') return item.type==='combo'?decimalString(effectiveListPriceById(item.id),6):item.listPrice;
         if (field==='status') return item.active?'启用':'停用';
         return String(item[field]??'');
       }
